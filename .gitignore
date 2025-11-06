@@ -1,0 +1,7 @@
+dist
+site
+build
+test
+__pycache__
+*.egg-info
+.mypy_cache
