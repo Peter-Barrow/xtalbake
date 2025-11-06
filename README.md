@@ -207,7 +207,7 @@ The `ErrorFlags` enum defines all possible error conditions:
 
 ## Requirements
 
-* Python 3.12+
+* Python 3.10+
 * [PyQt6](https://pypi.org/project/PyQt6/)
 * [pyserial](https://pypi.org/project/pyserial/)
 * [matplotlib](https://pypi.org/project/matplotlib/)
