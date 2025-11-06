@@ -1,12 +1,13 @@
 [project]
 name = "xtalbake"
 version = "0.1.0"
+license = {file = "LICENSE"}
 description = "Add your description here"
 readme = "README.md"
 authors = [
     { email = "peter.barrow.93@gmail.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "ipython>=9.6.0",
     "matplotlib>=3.10.7",
