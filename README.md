@@ -3,6 +3,8 @@
 A Python package and GUI tool for controlling and monitoring the MTD1020T TEC (Thermoelectric Cooler) Controller over a serial connection.  
 It provides functions for managing temperature control, PID parameters, safety settings, and includes a PyQt-based interface for interactive use.
 
+![gui](screenshot.png)
+
 ## Features
 
 - Query system information:
