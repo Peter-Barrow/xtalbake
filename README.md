@@ -35,7 +35,7 @@ A Python package and GUI tool for controlling and monitoring the MTD1020T TEC (T
 Clone and install directly from GitHub:
 
 ```bash
-pip install git+https://github.com/your-repo/xtalbake.git
+pip install git+https://github.com/Peter-Barrow/xtalbake.git
 ```
 
 ### Linux
