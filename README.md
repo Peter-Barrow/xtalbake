@@ -211,4 +211,3 @@ The `ErrorFlags` enum defines all possible error conditions:
 * [PyQt6](https://pypi.org/project/PyQt6/)
 * [pyserial](https://pypi.org/project/pyserial/)
 * [matplotlib](https://pypi.org/project/matplotlib/)
-* [ipython](https://pypi.org/project/ipython/)
