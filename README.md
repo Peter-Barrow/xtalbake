@@ -44,6 +44,13 @@ On Linux you made to do the following:
 - Install libftdi (`dnf install libftdi`)
 - You may also need to associate device with ftdio_sio, something like `echo "<VID> <PID>" | sudo tee /srv/bus/usb-serial/ftdio_sio/new_id`, you can find `<VID> <PID>` from `lsusb`
 
+- Device appearing with `lsusb` but not accessible?
+`lsusb -t -v` -> check if the driver is loaded
+if not load the `ftdi_sio` driver
+`sudo modprobe ftdi_sio`
+then run
+`echo "<VID> <PID>" | sudo tee /srv/bus/usb-serial/ftdio_sio/new_id`
+
 
 
 ## Usage

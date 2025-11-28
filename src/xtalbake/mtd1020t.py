@@ -95,9 +95,7 @@ class LegacyErrorFlags(IntFlag):
 ErrorFlags = LegacyErrorFlags
 
 
-# ============================================================================
-# LOW-LEVEL SERIAL COMMUNICATION
-# ============================================================================
+# Serial communication
 
 
 def write_command(conn: serial.Serial, command: str) -> None:

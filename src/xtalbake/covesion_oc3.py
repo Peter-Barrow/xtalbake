@@ -38,9 +38,7 @@ OC3_ERRORS = ErrorFlags.from_definitions(
 )
 
 
-# ============================================================================
-# LOW-LEVEL SERIAL COMMUNICATION
-# ============================================================================
+# Serial communication
 
 
 def build_command(
@@ -119,11 +117,6 @@ def query(
         response = query(conn, command, timeout, retry=True)
 
     return response
-
-
-# ============================================================================
-# DATA STRUCTURES
-# ============================================================================
 
 
 @dataclass
