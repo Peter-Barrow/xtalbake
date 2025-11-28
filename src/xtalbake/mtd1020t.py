@@ -1,52 +1,112 @@
 """
 MTD1020T TEC Controller Serial Interface
-Implements serial communication and command groups for the MTD1020T device.
+
+Implements serial communication and protocol interfaces for the MTD1020T device.
 """
 
 import serial
 import time
-from typing import Tuple, Dict, Optional, List, Literal
+from typing import Tuple, Optional, List, Literal
 from enum import IntFlag
+
+from ._tec_protocol import Severity, ErrorFlags
 
 __all__ = [
     'MTD1020T',
+    'write_command',
+    'read_response',
+    'query',
 ]
 
 
-class ErrorFlags(IntFlag):
-    """Error register bit flags for MTD1020T.
+# ERROR FLAGS DEFINITION
 
-    Attributes:
-        ENABLE_PIN_NOT_SET: Enable pin not set to L (GND)
-        INTERNAL_TEMP_HIGH: Internal temperature too high
-        THERMAL_LATCH_UP: TEC current at limit without temperature improvement
-        CYCLING_TIME_SMALL: Cycling time too small
-        NO_SENSOR: No Sensor detected
-        NO_TEC: No TEC detected (connection open)
-        TEC_MISPOLED: TEC mispoled
-        VALUE_OUT_OF_RANGE: Value out of range
-        INVALID_COMMAND: Invalid command
+MTD_ERRORS = ErrorFlags.from_definitions(
+    name='MTD1020ErrorFlags',
+    definitions={
+        1: (
+            'ENABLE_PIN_NOT_SET',
+            'Enable pin not set to L (GND)',
+            Severity.WARNING,
+        ),
+        2: (
+            'INTERNAL_TEMP_HIGH',
+            'Internal temperature too high',
+            Severity.CRITICAL,
+        ),
+        4: (
+            'THERMAL_LATCH_UP',
+            'TEC current at limit without temperature improvement',
+            Severity.CRITICAL,
+        ),
+        8: (
+            'CYCLING_TIME_SMALL',
+            'Cycling time too small',
+            Severity.WARNING,
+        ),
+        16: (
+            'NO_SENSOR',
+            'No sensor detected',
+            Severity.CRITICAL,
+        ),
+        32: (
+            'NO_TEC',
+            'No TEC detected (connection open)',
+            Severity.CRITICAL,
+        ),
+        64: (
+            'TEC_MISPOLED',
+            'TEC mispoled (reversed polarity)',
+            Severity.CRITICAL,
+        ),
+        8192: (
+            'VALUE_OUT_OF_RANGE',
+            'Value out of range',
+            Severity.WARNING,
+        ),
+        16384: (
+            'INVALID_COMMAND',
+            'Invalid command',
+            Severity.WARNING,
+        ),
+    },
+)
+
+
+# For backward compatibility with existing code
+class LegacyErrorFlags(IntFlag):
+    """Legacy ErrorFlags enum for backward compatibility.
+
+    Use MTD_ERRORS for new code.
     """
 
-    ENABLE_PIN_NOT_SET = 1 << 0  # Bit 0
-    INTERNAL_TEMP_HIGH = 1 << 1  # Bit 1
-    THERMAL_LATCH_UP = 1 << 2  # Bit 2
-    CYCLING_TIME_SMALL = 1 << 3  # Bit 3
-    NO_SENSOR = 1 << 4  # Bit 4
-    NO_TEC = 1 << 5  # Bit 5
-    TEC_MISPOLED = 1 << 6  # Bit 6
-    VALUE_OUT_OF_RANGE = 1 << 13  # Bit 13
-    INVALID_COMMAND = 1 << 14  # Bit 14
+    ENABLE_PIN_NOT_SET = 1 << 0
+    INTERNAL_TEMP_HIGH = 1 << 1
+    THERMAL_LATCH_UP = 1 << 2
+    CYCLING_TIME_SMALL = 1 << 3
+    NO_SENSOR = 1 << 4
+    NO_TEC = 1 << 5
+    TEC_MISPOLED = 1 << 6
+    VALUE_OUT_OF_RANGE = 1 << 13
+    INVALID_COMMAND = 1 << 14
+
+
+# Alias for backward compatibility
+ErrorFlags = LegacyErrorFlags
+
+
+# ============================================================================
+# LOW-LEVEL SERIAL COMMUNICATION
+# ============================================================================
 
 
 def write_command(conn: serial.Serial, command: str) -> None:
     """Write a command to the MTD1020T device.
 
     Args:
-        conn: Serial connection object
-        command: Command string (e.g., "L?" or "Lx1500")
+        conn: Serial connection object.
+        command: Command string (e.g., "L?" or "Lx1500").
     """
-    # Add line feed terminator and encode
     cmd_bytes = f'{command}\n'.encode('ascii')
     _ = conn.write(cmd_bytes)
     conn.flush()
@@ -56,11 +116,11 @@ def read_response(conn: serial.Serial, timeout: float = 2.0) -> str:
     """Read response from MTD1020T device until line feed terminator.
 
     Args:
-        conn: Serial connection object
-        timeout: Read timeout in seconds
+        conn: Serial connection object.
+        timeout: Read timeout in seconds.
 
     Returns:
-        Response string with brackets and whitespace stripped
+        Response string with brackets and whitespace stripped.
     """
     original_timeout = conn.timeout
     conn.timeout = timeout
@@ -77,12 +137,12 @@ def query(conn: serial.Serial, command: str, timeout: float = 2.0) -> str:
     """Send a command and read the response.
 
     Args:
-        conn: Serial connection object
-        command: Command string
-        timeout: Read timeout in seconds
+        conn: Serial connection object.
+        command: Command string.
+        timeout: Read timeout in seconds.
 
     Returns:
-        Response string
+        Response string.
     """
     write_command(conn, command)
     response = read_response(conn, timeout)
@@ -93,95 +153,51 @@ def query(conn: serial.Serial, command: str, timeout: float = 2.0) -> str:
     return response
 
 
+# SYSTEM INFORMATION COMMANDS
+
+
 def sys_info_get_version(conn: serial.Serial) -> str:
     """Read hardware and software version.
 
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Version string (e.g., "MTD1020 FW0.6.8")
+        Version string (e.g., "MTD1020 FW0.6.8").
     """
     return query(conn, 'm?')
 
 
 def sys_info_get_uuid(conn: serial.Serial) -> str:
     """Read UUID (Universal Unique Identifier).
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        32-character hexadecimal UUID string
+        32-character hexadecimal UUID string.
     """
     return query(conn, 'u?')
 
 
 def sys_info_get_error_register(conn: serial.Serial) -> int:
     """Read Error Register as raw integer value.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        16-bit error register value
+        16-bit error register value.
     """
     response = query(conn, 'E?')
     return int(response)
 
 
-def sys_info_get_error_flags(conn: serial.Serial) -> ErrorFlags:
-    """Read Error Register and return as ErrorFlags enum.
-    Args:
-        conn: Serial connection object
-
-    Returns:
-        ErrorFlags enum with active error bits set
-    """
-    error_value = sys_info_get_error_register(conn)
-    return ErrorFlags(error_value)
-
-
-def sys_info_get_active_errors(conn: serial.Serial) -> Dict[str, bool]:
-    """Read Error Register and return dictionary of active errors.
-    Args:
-        conn: Serial connection object
-
-    Returns:
-        Dictionary mapping error names to boolean values indicating
-        whether each error is active
-
-    Example:
-        >>> errors = system.get_active_errors()
-        >>> if errors['INTERNAL_TEMP_HIGH']:
-        ...     print('Device temperature too high!')
-    """
-    error_flags = sys_info_get_error_flags(conn)
-    return {
-        'ENABLE_PIN_NOT_SET': bool(
-            error_flags & ErrorFlags.ENABLE_PIN_NOT_SET,
-        ),
-        'INTERNAL_TEMP_HIGH': bool(
-            error_flags & ErrorFlags.INTERNAL_TEMP_HIGH,
-        ),
-        'THERMAL_LATCH_UP': bool(
-            error_flags & ErrorFlags.THERMAL_LATCH_UP,
-        ),
-        'CYCLING_TIME_SMALL': bool(
-            error_flags & ErrorFlags.CYCLING_TIME_SMALL,
-        ),
-        'NO_SENSOR': bool(error_flags & ErrorFlags.NO_SENSOR),
-        'NO_TEC': bool(error_flags & ErrorFlags.NO_TEC),
-        'TEC_MISPOLED': bool(error_flags & ErrorFlags.TEC_MISPOLED),
-        'VALUE_OUT_OF_RANGE': bool(
-            error_flags & ErrorFlags.VALUE_OUT_OF_RANGE,
-        ),
-        'INVALID_COMMAND': bool(error_flags & ErrorFlags.INVALID_COMMAND),
-    }
-
-
 def sys_info_reset_error_register(conn: serial.Serial) -> None:
     """Reset the Error Register.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Note:
         Can also be reset by toggling the Enable pin Off and On again.
@@ -189,8 +205,11 @@ def sys_info_reset_error_register(conn: serial.Serial) -> None:
     write_command(conn, 'c')
 
 
+# SAFETY BITMASK COMMANDS
+
+
 def safety_bitmask_set_masked_errors(
-    conn: serial.Serial, *errors: ErrorFlags
+    conn: serial.Serial, *errors: LegacyErrorFlags
 ) -> None:
     """Set which errors should be masked.
 
@@ -215,23 +234,12 @@ def safety_bitmask_set_masked_errors(
     Any errors not in the list will be unmasked.
 
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
         *errors: Variable number of ErrorFlags to mask. Only flags
                 corresponding to bits 0-7 are valid.
 
     Raises:
-        ValueError: If any error flag is outside the maskable range
-            (bits 0-7)
-
-    Example:
-        >>> # Mask only internal temperature errors
-        >>> safety.set_masked_errors(ErrorFlags.INTERNAL_TEMP_HIGH)
-        >>> # Mask multiple errors
-        >>> safety.set_masked_errors(
-        ...     ErrorFlags.NO_SENSOR, ErrorFlags.CYCLING_TIME_SMALL
-        ... )
-        >>> # Unmask all errors
-        >>> safety.set_masked_errors()
+        ValueError: If any error flag is outside the maskable range (bits 0-7).
 
     Note:
         Must use "M" command to save to non-volatile memory.
@@ -252,33 +260,30 @@ def safety_bitmask_set_masked_errors(
     write_command(conn, f'S{bitmask}')
 
 
-def safety_bitmask_get_masked_errors(conn: serial.Serial) -> list[ErrorFlags]:
+def safety_bitmask_get_masked_errors(
+    conn: serial.Serial,
+) -> List[LegacyErrorFlags]:
     """Read which errors are currently masked.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        List of ErrorFlags that are currently masked
-
-    Example:
-        >>> masked = safety.get_masked_errors()
-        >>> if ErrorFlags.INTERNAL_TEMP_HIGH in masked:
-        ...     print('Temperature errors are masked!')
+        List of ErrorFlags that are currently masked.
     """
     response = query(conn, 'S?')
     bitmask = int(response)
-    print(f'error mask: {response}')
 
     masked = []
     # Check each maskable error (bits 0-7)
     maskable_errors = [
-        ErrorFlags.ENABLE_PIN_NOT_SET,
-        ErrorFlags.INTERNAL_TEMP_HIGH,
-        ErrorFlags.THERMAL_LATCH_UP,
-        ErrorFlags.CYCLING_TIME_SMALL,
-        ErrorFlags.NO_SENSOR,
-        ErrorFlags.NO_TEC,
-        ErrorFlags.TEC_MISPOLED,
+        LegacyErrorFlags.ENABLE_PIN_NOT_SET,
+        LegacyErrorFlags.INTERNAL_TEMP_HIGH,
+        LegacyErrorFlags.THERMAL_LATCH_UP,
+        LegacyErrorFlags.CYCLING_TIME_SMALL,
+        LegacyErrorFlags.NO_SENSOR,
+        LegacyErrorFlags.NO_TEC,
+        LegacyErrorFlags.TEC_MISPOLED,
     ]
 
     for error in maskable_errors:
@@ -288,23 +293,20 @@ def safety_bitmask_get_masked_errors(conn: serial.Serial) -> list[ErrorFlags]:
     return masked
 
 
-def safety_bitmask_mask_error(conn: serial.Serial, error: ErrorFlags) -> None:
+def safety_bitmask_mask_error(
+    conn: serial.Serial, error: LegacyErrorFlags
+) -> None:
     """Add an error to the mask without affecting other masked errors.
 
     Args:
-        conn: Serial connection object
-        error: ErrorFlags value to mask
+        conn: Serial connection object.
+        error: ErrorFlags value to mask.
 
     Raises:
-        ValueError: If error flag is outside the maskable range (bits 0-7)
-
-    Example:
-        >>> # Add INTERNAL_TEMP_HIGH to existing masked errors
-        >>> safety.mask_error(ErrorFlags.INTERNAL_TEMP_HIGH)
+        ValueError: If error flag is outside the maskable range (bits 0-7).
 
     Note:
-        This reads the current bitmask, adds the specified error,
-        and writes it back. Only bits 0-7 can be masked.
+        This reads the current bitmask, adds the specified error, and writes it back.
     """
     error_value = int(error)
     if error_value > 0xFF:
@@ -315,59 +317,53 @@ def safety_bitmask_mask_error(conn: serial.Serial, error: ErrorFlags) -> None:
             f'Only errors corresponding to bits 0-7 can be masked.'
         )
 
-    current_masked = safety_bitmask_get_masked_errors()
+    current_masked = safety_bitmask_get_masked_errors(conn)
     if error not in current_masked:
         current_masked.append(error)
-    safety_bitmask_set_masked_errors(*current_masked)
+    safety_bitmask_set_masked_errors(conn, *current_masked)
 
 
 def safety_bitmask_unmask_error(
-    conn: serial.Serial,
-    error: ErrorFlags,
+    conn: serial.Serial, error: LegacyErrorFlags
 ) -> None:
     """Remove an error from the mask without affecting other masked errors.
 
     Args:
-        conn: Serial connection object
-        error: ErrorFlags value to unmask
-
-    Example:
-        >>> # Remove INTERNAL_TEMP_HIGH from masked errors
-        >>> safety.unmask_error(ErrorFlags.INTERNAL_TEMP_HIGH)
+        conn: Serial connection object.
+        error: ErrorFlags value to unmask.
 
     Note:
-        This reads the current bitmask, removes the specified error,
-        and writes it back.
+        This reads the current bitmask, removes the specified error, and writes it back.
     """
-    current_masked = safety_bitmask_get_masked_errors()
+    current_masked = safety_bitmask_get_masked_errors(conn)
     if error in current_masked:
         current_masked.remove(error)
-    safety_bitmask_set_masked_errors(*current_masked)
+    safety_bitmask_set_masked_errors(conn, *current_masked)
 
 
 def safety_bitmask_unmask_all(conn: serial.Serial) -> None:
     """Unmask all errors (set bitmask to 0).
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     This is the safest configuration as all errors will be reported.
-
-    Example:
-        >>> # Reset to safe defaults
-        >>> safety.unmask_all()
     """
-    safety_bitmask_set_masked_errors(conn, *[])
+    safety_bitmask_set_masked_errors(conn)
+
+
+# TEC CONTROL COMMANDS
 
 
 def tec_control_set_current_limit(conn: serial.Serial, limit_ma: int) -> None:
     """Set TEC current limit.
 
     Args:
-        conn: Serial connection object
-        limit_ma: Current limit in mA (200-2000)
+        conn: Serial connection object.
+        limit_ma: Current limit in mA (200-2000).
 
     Raises:
-        ValueError: If limit is outside valid range
+        ValueError: If limit is outside valid range.
     """
     if not 200 <= limit_ma <= 2000:
         raise ValueError('Current limit must be between 200 and 2000 mA')
@@ -376,11 +372,12 @@ def tec_control_set_current_limit(conn: serial.Serial, limit_ma: int) -> None:
 
 def tec_control_get_current_limit(conn: serial.Serial) -> int:
     """Read TEC current limit setting.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Current limit in mA
+        Current limit in mA.
     """
     response = query(conn, 'L?')
     return int(response)
@@ -395,11 +392,11 @@ def tec_control_get_actual_current(
     """Read actual TEC current.
 
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
         Tuple of (current in mA, mode string).
-        Mode is 'heating' if current < 0, else 'cooling'
+        Mode is 'heating' if current < 0, else 'cooling'.
     """
     response = query(conn, 'A?')
     current = int(response)
@@ -409,14 +406,18 @@ def tec_control_get_actual_current(
 
 def tec_control_get_actual_voltage(conn: serial.Serial) -> int:
     """Read actual TEC voltage.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Voltage in mV
+        Voltage in mV.
     """
     response = query(conn, 'U?')
     return int(response)
+
+
+# TEMPERATURE CONTROL COMMANDS
 
 
 def temperature_control_set_temperature(
@@ -425,12 +426,12 @@ def temperature_control_set_temperature(
     """Set target temperature.
 
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
         temp_millidegrees: Temperature in millidegrees C (5000-45000).
-                         Examples: 5000 = 5°C, 25000 = 25°C
+                         Examples: 5000 = 5°C, 25000 = 25°C.
 
     Raises:
-        ValueError: If temperature is outside valid range
+        ValueError: If temperature is outside valid range.
     """
     if not 5000 <= temp_millidegrees <= 45000:
         raise ValueError('Temperature must be between 5000 and 45000 (5-45°C)')
@@ -439,11 +440,12 @@ def temperature_control_set_temperature(
 
 def temperature_control_get_set_temperature(conn: serial.Serial) -> int:
     """Read set temperature.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Set temperature in millidegrees C
+        Set temperature in millidegrees C.
     """
     response = query(conn, 'T?')
     return int(response)
@@ -451,30 +453,28 @@ def temperature_control_get_set_temperature(conn: serial.Serial) -> int:
 
 def temperature_control_get_actual_temperature(conn: serial.Serial) -> int:
     """Read actual temperature.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Actual temperature in millidegrees C
+        Actual temperature in millidegrees C.
     """
     response = query(conn, 'Te?')
     return int(response)
 
 
-def temperature_control_set_window(
-    conn: serial.Serial,
-    window_mk: int,
-) -> None:
+def temperature_control_set_window(conn: serial.Serial, window_mk: int) -> None:
     """Set temperature window.
 
     The temperature window defines the acceptable deviation from setpoint.
 
     Args:
-        conn: Serial connection object
-        window_mk: Temperature window in millikelvin (1-32000)
+        conn: Serial connection object.
+        window_mk: Temperature window in millikelvin (1-32000).
 
     Raises:
-        ValueError: If window is outside valid range
+        ValueError: If window is outside valid range.
     """
     if not 1 <= window_mk <= 32000:
         raise ValueError('Window must be between 1 and 32000 mK')
@@ -484,8 +484,11 @@ def temperature_control_set_window(
 def temperature_control_get_window(conn: serial.Serial) -> int:
     """Read temperature window.
 
+    Args:
+        conn: Serial connection object.
+
     Returns:
-        Temperature window in millikelvin
+        Temperature window in millikelvin.
     """
     response = query(conn, 'W?')
     return int(response)
@@ -498,11 +501,11 @@ def temperature_control_set_delay(conn: serial.Serial, delay_sec: int) -> None:
     activating the Status output pin.
 
     Args:
-        conn: Serial connection object
-        delay_sec: Delay in seconds (1-32000)
+        conn: Serial connection object.
+        delay_sec: Delay in seconds (1-32000).
 
     Raises:
-        ValueError: If delay is outside valid range
+        ValueError: If delay is outside valid range.
     """
     if not 1 <= delay_sec <= 32000:
         raise ValueError('Delay must be between 1 and 32000 seconds')
@@ -511,40 +514,43 @@ def temperature_control_set_delay(conn: serial.Serial, delay_sec: int) -> None:
 
 def temperature_control_get_delay(conn: serial.Serial) -> int:
     """Read temperature window delay time.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Delay time in seconds
+        Delay time in seconds.
     """
     response = query(conn, 'd?')
     return int(response)
+
+
+# LOOP TEST COMMANDS
 
 
 def loop_test_set_critical_gain(conn: serial.Serial, gain: int) -> None:
     """Set critical gain for loop test.
 
     Args:
-        conn: Serial connection object
-        gain: Critical gain in mA/K (10-100000)
+        conn: Serial connection object.
+        gain: Critical gain in mA/K (10-100000).
 
     Raises:
-        ValueError: If gain is outside valid range
+        ValueError: If gain is outside valid range.
     """
     if not 10 <= gain <= 100000:
-        raise ValueError(
-            'Critical gain must be between 10 and 100000 mA/K',
-        )
+        raise ValueError('Critical gain must be between 10 and 100000 mA/K')
     write_command(conn, f'G{gain}')
 
 
 def loop_test_get_critical_gain(conn: serial.Serial) -> int:
     """Read critical gain.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Critical gain in mA/K
+        Critical gain in mA/K.
     """
     response = query(conn, 'G?')
     return int(response)
@@ -554,11 +560,11 @@ def loop_test_set_critical_period(conn: serial.Serial, period_ms: int) -> None:
     """Set critical period for loop test.
 
     Args:
-        conn: Serial connection object
-        period_ms: Critical period in milliseconds (100-100000)
+        conn: Serial connection object.
+        period_ms: Critical period in milliseconds (100-100000).
 
     Raises:
-        ValueError: If period is outside valid range
+        ValueError: If period is outside valid range.
     """
     if not 100 <= period_ms <= 100000:
         raise ValueError('Critical period must be between 100 and 100000 msec')
@@ -569,23 +575,27 @@ def loop_test_get_critical_period(conn: serial.Serial) -> int:
     """Read critical period.
 
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
+
     Returns:
-        Critical period in milliseconds
+        Critical period in milliseconds.
     """
     response = query(conn, 'O?')
     return int(response)
+
+
+# PID SETTINGS COMMANDS
 
 
 def pid_settings_set_p_share(conn: serial.Serial, p_value: int) -> None:
     """Set P Share (proportional gain).
 
     Args:
-        conn: Serial connection object
-        p_value: P share in mA/K (0-100000)
+        conn: Serial connection object.
+        p_value: P share in mA/K (0-100000).
 
     Raises:
-        ValueError: If P value is outside valid range
+        ValueError: If P value is outside valid range.
     """
     if not 0 <= p_value <= 100000:
         raise ValueError('P share must be between 0 and 100000 mA/K')
@@ -594,11 +604,12 @@ def pid_settings_set_p_share(conn: serial.Serial, p_value: int) -> None:
 
 def pid_settings_get_p_share(conn: serial.Serial) -> int:
     """Read P share.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        P share in mA/K
+        P share in mA/K.
     """
     response = query(conn, 'P?')
     return int(response)
@@ -608,11 +619,11 @@ def pid_settings_set_i_share(conn: serial.Serial, i_value: int) -> None:
     """Set I Share (integral gain).
 
     Args:
-        conn: Serial connection object
-        i_value: I share in mA/(K*sec) (0-100000)
+        conn: Serial connection object.
+        i_value: I share in mA/(K*sec) (0-100000).
 
     Raises:
-        ValueError: If I value is outside valid range
+        ValueError: If I value is outside valid range.
     """
     if not 0 <= i_value <= 100000:
         raise ValueError('I share must be between 0 and 100000 mA/(K*sec)')
@@ -621,11 +632,12 @@ def pid_settings_set_i_share(conn: serial.Serial, i_value: int) -> None:
 
 def pid_settings_get_i_share(conn: serial.Serial) -> int:
     """Read I share.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        I share in mA/(K*sec)
+        I share in mA/(K*sec).
     """
     response = query(conn, 'I?')
     return int(response)
@@ -635,11 +647,11 @@ def pid_settings_set_d_share(conn: serial.Serial, d_value: int) -> None:
     """Set D Share (derivative gain).
 
     Args:
-        conn: Serial connection object
-        d_value: D share in (mA*sec)/K (0-100000)
+        conn: Serial connection object.
+        d_value: D share in (mA*sec)/K (0-100000).
 
     Raises:
-        ValueError: If D value is outside valid range
+        ValueError: If D value is outside valid range.
     """
     if not 0 <= d_value <= 100000:
         raise ValueError('D share must be between 0 and 100000 (mA*sec)/K')
@@ -648,11 +660,12 @@ def pid_settings_set_d_share(conn: serial.Serial, d_value: int) -> None:
 
 def pid_settings_get_d_share(conn: serial.Serial) -> int:
     """Read D share.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        D share in (mA*sec)/K
+        D share in (mA*sec)/K.
     """
     response = query(conn, 'D?')
     return int(response)
@@ -662,11 +675,11 @@ def pid_settings_set_cycle_time(conn: serial.Serial, cycle_ms: int) -> None:
     """Set PID cycling time.
 
     Args:
-        conn: Serial connection object
-        cycle_ms: Cycle time in milliseconds (1-1000)
+        conn: Serial connection object.
+        cycle_ms: Cycle time in milliseconds (1-1000).
 
     Raises:
-        ValueError: If cycle time is outside valid range
+        ValueError: If cycle time is outside valid range.
     """
     if not 1 <= cycle_ms <= 1000:
         raise ValueError('Cycle time must be between 1 and 1000 msec')
@@ -675,20 +688,25 @@ def pid_settings_set_cycle_time(conn: serial.Serial, cycle_ms: int) -> None:
 
 def pid_settings_get_cycle_time(conn: serial.Serial) -> int:
     """Read cycling time.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Returns:
-        Cycle time in milliseconds
+        Cycle time in milliseconds.
     """
     response = query(conn, 'C?')
     return int(response)
 
 
+# CONFIGURATION SAVE COMMAND
+
+
 def save_configuration_to_memory(conn: serial.Serial) -> None:
     """Save current parameters to non-volatile memory.
+
     Args:
-        conn: Serial connection object
+        conn: Serial connection object.
 
     Saves T, W, L, d, G, O, P, I, D, C, and S parameters.
 
@@ -699,52 +717,51 @@ def save_configuration_to_memory(conn: serial.Serial) -> None:
     write_command(conn, 'M')
 
 
+# MTD1020T CONTROLLER CLASS
+
+
 class MTD1020T:
-    """High-level interface for the MTD1020T TEC (Thermoelectric Cooler)
-        Controller.
+    """MTD1020T TEC (Thermoelectric Cooler) Controller.
 
-    This class provides a high level wrapper for the MTD1020T serial command
-    interface, allowing users to interact with the device using readable
-    properties and methods rather than low-level serial commands.
-
-    The class supports querying system information, managing safety bitmasks,
-    controlling TEC current, setting temperature targets, configuring PID
-    parameters, and saving configurations to non-volatile memory.
+    High-level interface implementing temperature controller protocols.
+    Supports context manager for automatic cleanup.
 
     Example:
-        >>> controller = MTD1020T(port='/dev/ttyUSB0')
-        >>> print(controller.version)
-        >>> controller.current_limit = 1500
-        >>> controller.temperature_set_point = 25000  # 25°C
-        >>> print(controller.actual_temperature)
-        >>> controller.save_to_memory()
+        >>> with MTD1020T(port='/dev/ttyUSB0') as tec:
+        ...     tec.set_temperature_setpoint(25.0)
+        ...     print(tec.get_actual_temperature())
+        ...     tec.save_configuration()
 
-    Args:
-        port (str): Serial port device (e.g., "/dev/ttyUSB0" or "COM3").
-        baudrate (int, optional): Serial communication speed. Defaults to 9600.
-        timeout (float, optional): Read timeout in seconds. Defaults to 1.
-
-    Attributes:
-        conn (serial.Serial): Active serial connection to the MTD1020T.
-        _version (Optional[str]): Cached firmware version string.
-        _uuid (Optional[str]): Cached UUID string.
-        _masked_errors (Optional[List[ErrorFlags]]): Cached list of masked
-            errors.
+    Implements protocols:
+        - CoreTemperatureControl
+        - DeviceIdentification
+        - ErrorReporting
+        - PIDConfiguration
+        - PowerMonitoring
+        - ConfigurationPersistence
+        - ErrorMasking
+        - CurrentLimitControl
+        - ActualVoltageMonitoring
+        - TemperatureStabilityMonitoring
     """
 
     def __init__(
         self,
-        port,
+        port: str,
         baudrate: int = 115200,
         timeout: float = 2.0,
         write_timeout: float = 0.5,
     ):
-        """Initialize the MTD1020T serial interface."""
+        """Initialize MTD1020T controller.
 
-        self.conn = None
-        self._version: str | None = None
-        self._uuid: str | None = None
-        self._masked_errors: Optional[List[ErrorFlags]] = None
+        Args:
+            port: Serial port (e.g., '/dev/ttyUSB0', 'COM3').
+            baudrate: Serial baud rate (default: 115200).
+            timeout: Read timeout in seconds.
+            write_timeout: Write timeout in seconds.
+        """
+        self.conn: Optional[serial.Serial] = None
+        self.errors = MTD_ERRORS
 
         self._connect(
             port,
@@ -756,16 +773,21 @@ class MTD1020T:
     def _connect(
         self,
         port: str,
-        baudrate: int = 9600,
-        timeout: float = 2.0,
-        write_timeout: float = 1.0,
+        baudrate: int,
+        timeout: float,
+        write_timeout: float,
     ) -> None:
+        """Establish serial connection to device.
+
+        Args:
+            port: Serial port.
+            baudrate: Baud rate.
+            timeout: Read timeout.
+            write_timeout: Write timeout.
+        """
         conn = serial.Serial(
             port=port,
             baudrate=baudrate,
-            # bytesize=serial.EIGHTBITS,
-            # parity=serial.PARITY_NONE,
-            # stopbits=serial.STOPBITS_ONE,
             timeout=timeout,
             write_timeout=write_timeout,
         )
@@ -778,402 +800,347 @@ class MTD1020T:
 
         self.conn = conn
 
-    def _close(self):
-        self.conn.close()
-
-    def __repr__(self) -> str:
-        """Return a detailed string representation of the MTD1020T instance.
-
-        Provides a comprehensive summary of the controller state, including
-        connection settings, firmware information, TEC parameters, temperature
-        control values, safety masks, and PID tuning parameters.
-
-        Returns:
-            str: Formatted multi-line summary of the current controller state.
-        """
-        try:
-            version = self._version or sys_info_get_version(self.conn)
-        except Exception:
-            version = '<unavailable>'
-
-        try:
-            uuid = self._uuid or sys_info_get_uuid(self.conn)
-        except Exception:
-            uuid = '<unavailable>'
-
-        try:
-            current_limit = tec_control_get_current_limit(self.conn)
-            actual_current, mode = tec_control_get_actual_current(self.conn)
-            actual_voltage = tec_control_get_actual_voltage(self.conn)
-        except Exception:
-            current_limit = actual_current = actual_voltage = '<unavailable>'
-            mode = '<unknown>'
-
-        try:
-            temp_set = temperature_control_get_set_temperature(self.conn)
-            temp_actual = temperature_control_get_actual_temperature(self.conn)
-            temp_window = temperature_control_get_window(self.conn)
-            temp_delay = temperature_control_get_delay(self.conn)
-        except Exception:
-            temp_set = temp_actual = temp_window = temp_delay = '<unavailable>'
-
-        try:
-            masked = (
-                [e.name for e in self._masked_errors]
-                if self._masked_errors
-                else [
-                    e.name for e in safety_bitmask_get_masked_errors(self.conn)
-                ]
-            )
-        except Exception:
-            masked = ['<unavailable>']
-
-        try:
-            pid_p = pid_settings_get_p_share(self.conn)
-            pid_i = pid_settings_get_i_share(self.conn)
-            pid_d = pid_settings_get_d_share(self.conn)
-            pid_cycle = pid_settings_get_cycle_time(self.conn)
-        except Exception:
-            pid_p = pid_i = pid_d = pid_cycle = '<unavailable>'
-
-        return (
-            f'<MTD1020T Controller>\n'
-            f'  Connection\n'
-            f'    Port: {self.conn.port}\n'
-            f'    Baudrate: {self.conn.baudrate}\n'
-            f'    Timeout: {self.conn.timeout}\n\n'
-            f'  System Info\n'
-            f'    Firmware Version: {version}\n'
-            f'    UUID: {uuid}\n\n'
-            f'  TEC Control\n'
-            f'    Current Limit: {current_limit} mA\n'
-            f'    Actual Current: {actual_current} mA ({mode})\n'
-            f'    Actual Voltage: {actual_voltage} mV\n\n'
-            f'  Temperature Control\n'
-            f'    Setpoint: {temp_set} m°C\n'
-            f'    Actual: {temp_actual} m°C\n'
-            f'    Window: {temp_window} mK\n'
-            f'    Delay: {temp_delay} s\n\n'
-            f'  PID Parameters\n'
-            f'    P Share: {pid_p} mA/K\n'
-            f'    I Share: {pid_i} mA/(K·s)\n'
-            f'    D Share: {pid_d} (mA·s)/K\n'
-            f'    Cycle Time: {pid_cycle} ms\n\n'
-            f'  Safety\n'
-            f'    Masked Errors: {masked}\n'
-        )
+    def _close(self) -> None:
+        """Close serial connection."""
+        if self.conn is not None:
+            self.conn.close()
 
     def __enter__(self) -> 'MTD1020T':
+        """Context manager entry."""
         return self
 
-    def __exit__(self, exception_type, exception_value, traceback):
+    def __exit__(self, exception_type, exception_value, traceback) -> None:
+        """Context manager exit with cleanup."""
         self._close()
 
-    def __del__(self):
+    def __del__(self) -> None:
+        """Cleanup on deletion."""
         self._close()
 
-    @property
-    def version(self) -> str:
-        """Get device firmware version.
+    # CoreTemperatureControl Protocol
+
+    def get_temperature_setpoint(self) -> float:
+        """Get current temperature setpoint.
 
         Returns:
-            str: Firmware version string, e.g., "MTD1020 FW0.6.8".
+            Temperature setpoint in degrees Celsius.
         """
-        if self._version:
-            return self._version
-        self._version = sys_info_get_version(self.conn)
-        return self._version
+        temp_millidegrees = temperature_control_get_set_temperature(self.conn)
+        return temp_millidegrees / 1000.0
 
-    @property
-    def uuid(self) -> str:
-        """Get the device UUID (Universal Unique Identifier).
-
-        Returns:
-            str: 32-character hexadecimal UUID string.
-        """
-        if self._uuid:
-            return self._uuid
-        self._uuid = sys_info_get_uuid(self.conn)
-        return self._uuid
-
-    @property
-    def errors(self) -> Dict[str, bool]:
-        """Get the currently active error states.
-
-        Returns:
-            Dict[str, bool]: Mapping of error flag names to boolean states.
-        """
-        return sys_info_get_active_errors(self.conn)
-
-    def reset_errors(self) -> None:
-        """Reset the device error register."""
-        sys_info_reset_error_register(self.conn)
-
-    @property
-    def masked_errors(self) -> List[ErrorFlags]:
-        """Get currently masked errors.
-
-        Returns:
-            List[ErrorFlags]: List of masked error flags.
-        """
-        if self._masked_errors is None:
-            self._masked_errors = safety_bitmask_get_masked_errors(self.conn)
-        return self._masked_errors
-
-    @masked_errors.setter
-    def masked_errors(self, *errors: ErrorFlags) -> None:
-        """Set masked errors (overwrites all existing masks).
-
-        Args:
-            *errors (ErrorFlags): Error flags to mask.
-        """
-        safety_bitmask_set_masked_errors(self.conn, *errors)
-
-    def mask_error(self, error: ErrorFlags) -> None:
-        """Add an error to the current mask without overwriting others.
-
-        Args:
-            error (ErrorFlags): Error flag to mask.
-        """
-        safety_bitmask_mask_error(self.conn, error)
-        self._masked_errors = safety_bitmask_get_masked_errors(self.conn)
-
-    def unmask_error(self, error: ErrorFlags) -> None:
-        """Remove an error from the current mask.
-
-        Args:
-            error (ErrorFlags): Error flag to unmask.
-        """
-        safety_bitmask_unmask_error(self.conn, error)
-        self._masked_errors = safety_bitmask_get_masked_errors(self.conn)
-
-    def unmask_all_errors(self) -> None:
-        """Unmask all errors (restore safe default state)."""
-        safety_bitmask_unmask_all(self.conn)
-        self._masked_errors = []
-
-    @property
-    def current_limit(self) -> int:
-        """Get the TEC current limit.
-
-        Returns:
-            int: Current limit in milliamperes (mA).
-        """
-        return tec_control_get_current_limit(self.conn)
-
-    @current_limit.setter
-    def current_limit(self, limit_ma: int) -> None:
-        """Set the TEC current limit.
-
-        Args:
-            limit_ma (int): Current limit in mA (200–2000).
-        """
-        tec_control_set_current_limit(self.conn, limit_ma)
-
-    @property
-    def actual_current(self) -> Tuple[int, TemperatureMode]:
-        """Get actual TEC current and mode.
-
-        Returns:
-            Tuple[int, TemperatureMode]: (current_mA, mode)
-            where mode is "heating" or "cooling".
-        """
-        return tec_control_get_actual_current(self.conn)
-
-    @property
-    def actual_voltage(self) -> int:
-        """Get the actual TEC voltage.
-
-        Returns:
-            int: Voltage in millivolts (mV).
-        """
-        return tec_control_get_actual_voltage(self.conn)
-
-    @property
-    def temperature_set_point(self) -> int:
-        """Get the current temperature set point.
-
-        Returns:
-            int: Temperature setpoint in millidegrees Celsius.
-        """
-        return temperature_control_get_set_temperature(self.conn)
-
-    @temperature_set_point.setter
-    def temperature_set_point(self, temp_millidegrees: int) -> None:
+    def set_temperature_setpoint(self, temp_celsius: float) -> None:
         """Set target temperature.
 
         Args:
-            temp_millidegrees (int): Target temperature in millidegrees Celsius
-                (5000–45000).
+            temp_celsius: Target temperature in degrees Celsius.
         """
+        temp_millidegrees = int(temp_celsius * 1000)
         temperature_control_set_temperature(self.conn, temp_millidegrees)
 
-    @property
-    def actual_temperature(self) -> int:
-        """Get the actual temperature reading.
+    def get_actual_temperature(self) -> float:
+        """Get actual measured temperature.
 
         Returns:
-            int: Actual temperature in millidegrees Celsius.
+            Actual temperature in degrees Celsius.
         """
-        return temperature_control_get_actual_temperature(self.conn)
-
-    @property
-    def temperature(self) -> Tuple[int, int]:
-        """Get both the set and actual temperatures.
-
-        Returns:
-            Tuple[int, int]: (set_temperature, actual_temperature) in
-                millidegrees Celsius.
-        """
-        return (
-            self.temperature_set_point,
-            self.actual_temperature,
+        temp_millidegrees = temperature_control_get_actual_temperature(
+            self.conn
         )
+        return temp_millidegrees / 1000.0
 
-    @property
-    def temperature_set_point_window(self) -> int:
-        """Get the configured temperature window.
+    # DeviceIdentification Protocol
+
+    def get_firmware_version(self) -> str:
+        """Get device firmware version.
 
         Returns:
-            int: Temperature window in millikelvin.
+            Firmware version string.
         """
-        return temperature_control_get_window(self.conn)
+        return sys_info_get_version(self.conn)
 
-    @temperature_set_point_window.setter
-    def temperature_set_point_window(self, window_mk: int) -> None:
-        """Set the temperature window.
+    def get_device_id(self) -> str:
+        """Get unique device identifier.
+
+        Returns:
+            Device UUID.
+        """
+        return sys_info_get_uuid(self.conn)
+
+    # ErrorReporting Protocol
+
+    def get_error_code(self) -> int:
+        """Get current error code.
+
+        Returns:
+            Integer error code representing active error flags.
+        """
+        return sys_info_get_error_register(self.conn)
+
+    def has_errors(self) -> bool:
+        """Check if any errors are present.
+
+        Returns:
+            True if any errors are active.
+        """
+        return self.get_error_code() != 0
+
+    def clear_errors(self) -> None:
+        """Clear/reset all error conditions."""
+        sys_info_reset_error_register(self.conn)
+
+    # PIDConfiguration Protocol
+
+    def get_pid_parameters(self) -> Tuple[float, float, float]:
+        """Get PID controller parameters.
+
+        Returns:
+            Tuple of (P, I, D) parameters in standard units.
+        """
+        p = pid_settings_get_p_share(self.conn) / 1000.0  # Convert mA/K to A/K
+        i = (
+            pid_settings_get_i_share(self.conn) / 1000.0
+        )  # Convert mA/(K·s) to A/(K·s)
+        d = (
+            pid_settings_get_d_share(self.conn) / 1000.0
+        )  # Convert (mA·s)/K to (A·s)/K
+        return (p, i, d)
+
+    def set_pid_parameters(self, p: float, i: float, d: float) -> None:
+        """Set PID controller parameters.
 
         Args:
-            window_mk (int): Window width in millikelvin (1–32000).
+            p: Proportional gain in A/K.
+            i: Integral gain in A/(K·s).
+            d: Derivative gain in (A·s)/K.
         """
+        p_ma = int(p * 1000)  # Convert A/K to mA/K
+        i_ma = int(i * 1000)  # Convert A/(K·s) to mA/(K·s)
+        d_ma = int(d * 1000)  # Convert (A·s)/K to (mA·s)/K
+
+        pid_settings_set_p_share(self.conn, p_ma)
+        pid_settings_set_i_share(self.conn, i_ma)
+        pid_settings_set_d_share(self.conn, d_ma)
+
+    # PowerMonitoring Protocol
+
+    def get_output_power(self) -> float:
+        """Get current output power.
+
+        Returns:
+            Output current in amperes (absolute value).
+        """
+        current_ma, _ = tec_control_get_actual_current(self.conn)
+        return abs(current_ma) / 1000.0
+
+    def get_supply_voltage(self) -> float:
+        """Get supply voltage.
+
+        Returns:
+            Actual TEC voltage in volts.
+        """
+        voltage_mv = tec_control_get_actual_voltage(self.conn)
+        return voltage_mv / 1000.0
+
+    # ConfigurationPersistence Protocol
+
+    def save_configuration(self) -> None:
+        """Save current configuration to non-volatile memory.
+
+        Persists all settings so they survive power cycles.
+
+        Note:
+            The MTD1020T has limited erase/write cycles. Only call this
+            when you want to permanently save settings.
+        """
+        save_configuration_to_memory(self.conn)
+
+    # ErrorMasking Protocol
+
+    def get_masked_errors(self) -> int:
+        """Get currently masked error flags.
+
+        Returns:
+            Bitmask of masked error flags.
+        """
+        masked_list = safety_bitmask_get_masked_errors(self.conn)
+        mask = 0
+        for error in masked_list:
+            mask |= int(error)
+        return mask
+
+    def mask_error(self, error_bit: int) -> None:
+        """Mask (ignore) a specific error.
+
+        Args:
+            error_bit: Error bit value to mask (must be in bits 0-7).
+        """
+        # Convert bit value to legacy ErrorFlags
+        if error_bit in [1, 2, 4, 8, 16, 32, 64]:
+            error_flag = LegacyErrorFlags(error_bit)
+            safety_bitmask_mask_error(self.conn, error_flag)
+        else:
+            raise ValueError(f'Error bit {error_bit} cannot be masked')
+
+    def unmask_error(self, error_bit: int) -> None:
+        """Unmask (re-enable) a specific error.
+
+        Args:
+            error_bit: Error bit value to unmask.
+        """
+        # Convert bit value to legacy ErrorFlags
+        if error_bit in [1, 2, 4, 8, 16, 32, 64]:
+            error_flag = LegacyErrorFlags(error_bit)
+            safety_bitmask_unmask_error(self.conn, error_flag)
+        else:
+            raise ValueError(f'Error bit {error_bit} cannot be unmasked')
+
+    def unmask_all_errors(self) -> None:
+        """Unmask all errors (restore default safe state)."""
+        safety_bitmask_unmask_all(self.conn)
+
+    # CurrentLimitControl Protocol
+
+    def get_current_limit(self) -> float:
+        """Get TEC current limit.
+
+        Returns:
+            Current limit in amperes.
+        """
+        limit_ma = tec_control_get_current_limit(self.conn)
+        return limit_ma / 1000.0
+
+    def set_current_limit(self, limit_amps: float) -> None:
+        """Set TEC current limit.
+
+        Args:
+            limit_amps: Current limit in amperes (0.2 to 2.0).
+        """
+        limit_ma = int(limit_amps * 1000)
+        tec_control_set_current_limit(self.conn, limit_ma)
+
+    def get_actual_current(self) -> Tuple[float, str]:
+        """Get actual TEC current and direction.
+
+        Returns:
+            Tuple of (current_amps, mode) where mode is "heating" or "cooling".
+        """
+        current_ma, mode = tec_control_get_actual_current(self.conn)
+        return (abs(current_ma) / 1000.0, mode)
+
+    # ActualVoltageMonitoring Protocol
+
+    def get_actual_voltage(self) -> float:
+        """Get actual output voltage.
+
+        Returns:
+            Output voltage in volts.
+        """
+        voltage_mv = tec_control_get_actual_voltage(self.conn)
+        return voltage_mv / 1000.0
+
+    # TemperatureStabilityMonitoring Protocol
+
+    def get_temperature_stability_status(self) -> bool:
+        """Get temperature stability status.
+
+        Returns:
+            True if temperature is within stability window and delay has passed.
+
+        Note:
+            MTD1020T doesn't have a direct stability status query.
+            This checks if actual temp is within the configured window.
+        """
+        setpoint = temperature_control_get_set_temperature(self.conn)
+        actual = temperature_control_get_actual_temperature(self.conn)
+        window = temperature_control_get_window(self.conn)
+
+        # Window is in millikelvin, temperatures in millidegrees
+        deviation = abs(actual - setpoint)
+        return deviation <= window
+
+    def get_stability_window(self) -> Tuple[float, float]:
+        """Get temperature stability window.
+
+        Returns:
+            Tuple of (low_threshold, high_threshold) in degrees Celsius.
+            Both values are symmetric around setpoint.
+        """
+        window_mk = temperature_control_get_window(self.conn)
+        window_celsius = window_mk / 1000.0
+        return (-window_celsius, window_celsius)
+
+    def set_stability_window(self, low: float, high: float) -> None:
+        """Set temperature stability window.
+
+        Args:
+            low: Low threshold in degrees Celsius (should be negative).
+            high: High threshold in degrees Celsius (should be positive).
+
+        Note:
+            MTD1020T only supports symmetric windows. This will use the
+            larger of |low| and |high| as the window size.
+        """
+        window_celsius = max(abs(low), abs(high))
+        window_mk = int(window_celsius * 1000)
         temperature_control_set_window(self.conn, window_mk)
 
-    @property
-    def temperature_control_delay(self) -> int:
-        """Get the temperature control delay time.
+    # Additional
 
-        Returns:
-            int: Delay time in seconds.
-        """
-        return temperature_control_get_delay(self.conn)
-
-    @temperature_control_delay.setter
-    def temperature_control_delay(self, delay_sec: int) -> None:
-        """Set the delay before status activation.
+    def get_error_report(self, colorize: bool = True) -> str:
+        """Get formatted error report.
 
         Args:
-            delay_sec (int): Delay time in seconds (1–32000).
-        """
-        temperature_control_set_delay(self.conn, delay_sec)
-
-    @property
-    def loop_test_critical_gain(self) -> int:
-        """Get the critical gain value for loop testing.
+            colorize: Whether to include ANSI color codes.
 
         Returns:
-            int: Critical gain in mA/K.
+            Formatted error report string.
         """
-        return loop_test_get_critical_gain(self.conn)
+        error_code = self.get_error_code()
+        return self.errors.format_report(error_code, colorize)
 
-    @loop_test_critical_gain.setter
-    def loop_test_critical_gain(self, gain: int) -> None:
-        """Set the critical gain value for loop testing.
+    def print_error_report(self, colorize: bool = True) -> None:
+        """Print formatted error report.
 
         Args:
-            gain (int): Critical gain in mA/K (10–100000).
+            colorize: Whether to include ANSI color codes.
         """
-        loop_test_set_critical_gain(self.conn, gain)
+        print(self.get_error_report(colorize))
+
+    # backward compatibility
 
     @property
-    def loop_test_critical_period(self) -> int:
-        """Get the critical period for loop testing.
-
-        Returns:
-            int: Period in milliseconds.
-        """
-        return loop_test_get_critical_period(self.conn)
-
-    @loop_test_critical_period.setter
-    def loop_test_critical_period(self, period_ms: int) -> None:
-        """Set the critical period for loop testing.
-
-        Args:
-            period_ms (int): Period in milliseconds (100–100000).
-        """
-        loop_test_set_critical_period(self.conn, period_ms)
+    def version(self) -> str:
+        """Get device firmware version (legacy property)."""
+        return self.get_firmware_version()
 
     @property
-    def pid_p_share(self) -> int:
-        """Get the PID proportional gain (P share).
-
-        Returns:
-            int: P share in mA/K.
-        """
-        return pid_settings_get_p_share(self.conn)
-
-    @pid_p_share.setter
-    def pid_p_share(self, p_value: int) -> None:
-        """Set the PID proportional gain (P share).
-
-        Args:
-            p_value (int): P share in mA/K (0–100000).
-        """
-        pid_settings_set_p_share(self.conn, p_value)
+    def uuid(self) -> str:
+        """Get device UUID (legacy property)."""
+        return self.get_device_id()
 
     @property
-    def pid_i_share(self) -> int:
-        """Get the PID integral gain (I share).
+    def current_limit(self) -> float:
+        """Get/set current limit in amperes (legacy property)."""
+        return self.get_current_limit()
 
-        Returns:
-            int: I share in mA/(K·s).
-        """
-        return pid_settings_get_i_share(self.conn)
-
-    @pid_i_share.setter
-    def pid_i_share(self, i_value: int) -> None:
-        """Set the PID integral gain (I share).
-
-        Args:
-            i_value (int): I share in mA/(K·s) (0–100000).
-        """
-        pid_settings_set_i_share(self.conn, i_value)
+    @current_limit.setter
+    def current_limit(self, limit_amps: float) -> None:
+        self.set_current_limit(limit_amps)
 
     @property
-    def pid_d_share(self) -> int:
-        """Get the PID derivative gain (D share).
+    def temperature_set_point(self) -> float:
+        """Get/set temperature setpoint in degrees (legacy property)."""
+        return self.get_temperature_setpoint()
 
-        Returns:
-            int: D share in (mA·s)/K.
-        """
-        return pid_settings_get_d_share(self.conn)
-
-    @pid_d_share.setter
-    def pid_d_share(self, d_value: int) -> None:
-        """Set the PID derivative gain (D share).
-
-        Args:
-            d_value (int): D share in (mA·s)/K (0–100000).
-        """
-        pid_settings_set_d_share(self.conn, d_value)
+    @temperature_set_point.setter
+    def temperature_set_point(self, temp_celsius: float) -> None:
+        self.set_temperature_setpoint(temp_celsius)
 
     @property
-    def pid_cycle_time(self) -> int:
-        """Get the PID cycle time.
-
-        Returns:
-            int: Cycle time in milliseconds.
-        """
-        return pid_settings_get_cycle_time(self.conn)
-
-    @pid_cycle_time.setter
-    def pid_cycle_time(self, cycle_time_value: int) -> None:
-        """Set the PID cycle time.
-
-        Args:
-            cycle_time_value (int): Cycle time in milliseconds (1–1000).
-        """
-        pid_settings_set_cycle_time(self.conn, cycle_time_value)
+    def actual_temperature(self) -> float:
+        """Get actual temperature in degrees (legacy property)."""
+        return self.get_actual_temperature()
 
     def save_to_memory(self) -> None:
-        """Save all current configuration parameters to non-volatile memory."""
-        save_configuration_to_memory(self.conn)
+        """Save configuration to memory (legacy method name)."""
+        self.save_configuration()
