@@ -1,34 +1,22 @@
 # xtalbake
 
-A Python package and GUI tool for controlling and monitoring the MTD1020T TEC (Thermoelectric Cooler) Controller over a serial connection.  It provides functions for managing temperature control, PID parameters, safety settings, and includes a PyQt-based interface for interactive use.
+A Python package and GUI tool for controlling and monitoring temperature controllers over serial connections. The package provides a unified interface for multiple device types through a protocol-based architecture, with support for the MTD1020T TEC Controller and Covesion OC3 Oven Controller.
 
 ![gui](screenshot.png)
 
+## Overview
+
+xtalbake uses a protocol-based design to standardize interaction with different temperature controller hardware. Devices are automatically discovered via USB VID:PID identification, and a factory function simplifies instantiation. This architecture allows seamless support for multiple controller types while maintaining a consistent programming interface.
+
 ## Features
 
-- Query system information:
-  - Firmware version (`version`)
-  - Device UUID (`uuid`)
-  - Error register and active errors (`errors`)
-- Temperature control:
-  - Set and read target temperature (`temperature_set_point`)
-  - Monitor actual temperature (`actual_temperature`)
-  - Configure temperature window and delay
-- TEC current management:
-  - Set current limit (`current_limit`)
-  - Read actual current and voltage
-  - Monitor heating/cooling mode
-- PID tuning:
-  - Configure P, I, D shares
-  - Set cycle time
-  - Loop test parameters (critical gain and period)
-- Safety features:
-  - Mask/unmask error conditions
-  - Reset error register
-- Configuration persistence:
-  - Save settings to non-volatile memory (`save_to_memory`)
-- High-level `MTD1020T` class with property-based interface
-- Context manager support for automatic connection handling
+- Unified protocol-based interface for multiple temperature controller types
+- Automatic device discovery via USB VID:PID
+- Factory function for simplified controller instantiation
+- PyQt-based GUI for interactive control
+- Support for multiple controller types:
+  - MTD1020T TEC (Thermoelectric Cooler) Controller
+  - Covesion OC3 Oven Controller
 
 ## Installation
 
@@ -40,45 +28,228 @@ pip install git+https://github.com/Peter-Barrow/xtalbake.git
 
 ### Linux
 
-On Linux you made to do the following:
-- Install libftdi (`dnf install libftdi`)
-- You may also need to associate device with ftdio_sio, something like `echo "<VID> <PID>" | sudo tee /srv/bus/usb-serial/ftdio_sio/new_id`, you can find `<VID> <PID>` from `lsusb`
+On Linux systems, USB serial devices sometimes need additional setup. Here's what you might need to do:
 
-- Device appearing with `lsusb` but not accessible?
-`lsusb -t -v` -> check if the driver is loaded
-if not load the `ftdi_sio` driver
-`sudo modprobe ftdi_sio`
-then run
-`echo "<VID> <PID>" | sudo tee /srv/bus/usb-serial/ftdio_sio/new_id`
+#### Required Dependencies
 
+First, install the FTDI library (the exact package name varies by distribution):
 
+```bash
+# Fedora/RHEL/CentOS
+sudo dnf install libftdi
+
+# Debian/Ubuntu
+sudo apt install libftdi1
+```
+
+#### Device Not Appearing?
+
+If your device shows up in `lsusb` but isn't accessible, you'll need to load the FTDI serial driver and register your device.
+
+**Step 1:** Find your device's VID:PID by running:
+
+```bash
+lsusb
+```
+
+Look for your controller in the output. You'll see something like `Bus 001 Device 005: ID 0403:6001 Future Technology Devices`. The numbers after `ID` are your VID:PID (in this case `0403:6001`).
+
+**Step 2:** Load the FTDI serial driver:
+
+```bash
+sudo modprobe ftdi_sio
+```
+
+**Step 3:** Register your device with the driver (replace `<VID>` and `<PID>` with your actual values):
+
+```bash
+echo "<VID> <PID>" | sudo tee /sys/bus/usb-serial/drivers/ftdi_sio/new_id
+```
+
+For example, for a device with VID:PID of `0403:6001`:
+
+```bash
+echo "0403 6001" | sudo tee /sys/bus/usb-serial/drivers/ftdi_sio/new_id
+```
+
+Your device should now appear as `/dev/ttyUSB0` (or similar) and be ready to use.
+
+#### Troubleshooting
+
+If you're still having issues, check whether the driver is properly loaded:
+
+```bash
+lsusb -t -v
+```
+
+This shows the USB device tree with driver information. Your device should show `ftdi_sio` as the driver. If it doesn't, try unplugging and replugging the device after completing the steps above.
+
+## Protocol Architecture
+
+Temperature controllers in xtalbake implement one or more protocols that define standardized interfaces. This allows different hardware to be controlled through a common API while still supporting device-specific features.
+
+### Core Protocols
+
+All temperature controllers must implement these base protocols:
+
+#### CoreTemperatureControl
+
+The minimum interface for basic temperature control. All temperatures are in degrees Celsius.
+
+- `is_enabled()` - Check if temperature control is enabled
+- `enable_temperature_control()` - Enable temperature control
+- `disable_temperature_control()` - Disable temperature control
+- `get_temperature_setpoint()` - Get current temperature setpoint
+- `set_temperature_setpoint(temp_celsius)` - Set target temperature
+- `get_actual_temperature()` - Get actual measured temperature
+
+#### DeviceIdentification
+
+Device information and identification.
+
+- `get_firmware_version()` - Get device firmware version
+- `get_device_uuid()` - Get unique device identifier (if available)
+- `get_device_model()` - Get device model name
+
+#### ErrorReporting
+
+Standardized error handling across devices.
+
+- `get_error_code()` - Get current error code (bitmask)
+- `get_error_flags()` - Get ErrorFlags handler for this device
+- `get_active_errors()` - Get list of active error conditions
+- `reset_errors()` - Reset/clear error register
+
+#### PIDConfiguration
+
+PID control loop configuration.
+
+- `get_pid_p()` - Get proportional gain
+- `set_pid_p(value)` - Set proportional gain
+- `get_pid_i()` - Get integral gain
+- `set_pid_i(value)` - Set integral gain
+- `get_pid_d()` - Get derivative gain
+- `set_pid_d(value)` - Set derivative gain
+
+#### PowerMonitoring
+
+Monitor power consumption and supply.
+
+- `get_power()` - Get current power consumption
+- `get_supply_voltage()` - Get supply voltage
+
+### Device-Specific Protocols
+
+Additional protocols provide specialized features:
+
+#### CurrentLimitControl (MTD1020T)
+
+Control TEC current limits.
+
+- `get_current_limit()` - Get TEC current limit in amperes
+- `set_current_limit(limit_amps)` - Set current limit
+- `get_actual_current()` - Get actual current and heating/cooling mode
+
+#### ErrorMasking (MTD1020T)
+
+Selectively mask error conditions.
+
+- `get_masked_errors()` - Get currently masked error bitmask
+- `mask_error(error_bit)` - Mask a specific error
+- `unmask_error(error_bit)` - Unmask a specific error
+- `unmask_all_errors()` - Unmask all errors
+
+#### AlarmManagement (OC3)
+
+Temperature alarm threshold configuration.
+
+- `get_alarm_low()` - Get low temperature alarm threshold
+- `set_alarm_low(temp_celsius)` - Set low alarm threshold
+- `get_alarm_high()` - Get high temperature alarm threshold
+- `set_alarm_high(temp_celsius)` - Set high alarm threshold
+- `get_alarm_status()` - Get current alarm status
+
+#### RampControl (OC3)
+
+Controlled temperature ramping.
+
+- `get_ramp_rate()` - Get ramp rate in degrees/minute
+- `set_ramp_rate(rate_deg_per_min)` - Set ramp rate
+
+#### TemperatureCycling (OC3)
+
+Automated temperature cycling.
+
+- `get_cycle_count()` - Get number of completed cycles
+- `is_cycling()` - Check if cycling is active
+
+#### TemperatureStabilityMonitoring (OC3)
+
+Monitor temperature stability.
+
+- `get_temperature_stability_status()` - Check if temperature is stable
+- `get_stability_window()` - Get stability window thresholds
+- `set_stability_window(low, high)` - Set stability window
+
+### ErrorFlags System
+
+The `ErrorFlags` class provides universal error handling for any device type. Each device defines its own error conditions with associated severity levels:
+
+- **Severity.CRITICAL** - Severe errors requiring immediate attention
+- **Severity.WARNING** - Non-critical issues that should be monitored
+- **Severity.INFO** - Informational status messages
+
+The ErrorFlags handler provides:
+- `from_code(code)` - Parse error code into flags
+- `list_active(code)` - Get list of active error flags
+- `get_descriptions(code)` - Get human-readable error descriptions
+- `get_details(code)` - Get detailed error information with severity
+- `has_critical(code)` - Check for critical errors
+- `format_report(code)` - Generate formatted error report
 
 ## Usage
 
-### As a library
+### Device Discovery and Instantiation
 
-You can import the package and use the `MTD1020T` class directly:
+The recommended way to connect to controllers is using the automatic discovery system:
 
 ```python
-from xtalbake.mtd1020t import MTD1020T
+from xtalbake import discover, create_controller
 
-# Using context manager
-with MTD1020T(port="/dev/ttyUSB0") as controller:
-    print(controller.version)
-    print(controller)  # Detailed status summary
-    
-    # Set temperature to 25°C
-    controller.temperature_set_point = 25000  # in millidegrees
-    
-    # Configure current limit
-    controller.current_limit = 1500  # mA
-    
-    # Monitor temperature
-    set_temp, actual_temp = controller.temperature
-    print(f"Target: {set_temp/1000}°C, Actual: {actual_temp/1000}°C")
-    
-    # Save configuration
-    controller.save_to_memory()
+# Discover all connected temperature controllers
+devices = discover()
+for port, description, controller_type in devices:
+    print(f'{port}: [{controller_type}] {description}')
+
+# Create controller for first discovered device
+if devices:
+    port, _, _ = devices[0]
+    controller = create_controller(port)
+    print(controller.get_firmware_version())
+```
+
+You can also run device discovery from the command line:
+
+```bash
+python -m xtalbake.device_discovery
+```
+
+### Direct Instantiation
+
+If you know your device type and port, you can instantiate directly:
+
+```python
+from xtalbake import MTD1020T, OC3
+
+# MTD1020T TEC Controller
+with MTD1020T(port="/dev/ttyUSB0") as tec:
+    print(tec.get_firmware_version())
+    tec.set_temperature_setpoint(25.0)  # degrees Celsius
+
+# Covesion OC3 Oven Controller
+with OC3(port="/dev/ttyUSB1") as oven:
+    print(oven.get_firmware_version())
+    oven.set_temperature_setpoint(45.0)
 ```
 
 ### As a GUI
@@ -89,132 +260,186 @@ To launch the graphical interface:
 xtalbake-ui
 ```
 
-This will open a window where you can connect to the controller, adjust temperature settings, configure PID parameters, and monitor device status.
+This will open a window where you can connect to controllers, adjust temperature settings, configure PID parameters, and monitor device status.
 
-## API Reference
+## Supported Devices
 
-### MTD1020T Class
+### MTD1020T TEC Controller
 
-The `MTD1020T` class provides a high-level interface to the device with the following properties and methods:
+The MTD1020T is a precision thermoelectric cooler controller with the following features:
 
 #### System Information
-- `version` - Firmware version string (read-only)
-- `uuid` - Device UUID (read-only)
-- `errors` - Dictionary of active error flags (read-only)
-- `reset_errors()` - Reset the error register
-
-#### Safety & Error Masking
-- `masked_errors` - List of currently masked errors (read/write)
-- `mask_error(error)` - Add an error to the mask
-- `unmask_error(error)` - Remove an error from the mask
-- `unmask_all_errors()` - Unmask all errors
-
-#### TEC Current Control
-- `current_limit` - TEC current limit in mA (200-2000)
-- `actual_current` - Tuple of (current_mA, mode) where mode is 'heating' or 'cooling' (read-only)
-- `actual_voltage` - Actual TEC voltage in mV (read-only)
+- Firmware version query
+- Device UUID
+- Error register with multiple error conditions
 
 #### Temperature Control
-- `temperature_set_point` - Target temperature in millidegrees C (5000-45000)
-- `actual_temperature` - Actual temperature in millidegrees C (read-only)
-- `temperature` - Tuple of (set_point, actual) temperatures (read-only)
-- `temperature_set_point_window` - Temperature window in millikelvin (1-32000)
-- `temperature_control_delay` - Delay before status activation in seconds (1-32000)
+- Temperature range: 5°C to 45°C
+- Temperature window and delay configuration
+- Actual temperature monitoring
 
-#### PID Parameters
-- `pid_p_share` - Proportional gain in mA/K (0-100000)
-- `pid_i_share` - Integral gain in mA/(K·s) (0-100000)
-- `pid_d_share` - Derivative gain in (mA·s)/K (0-100000)
-- `pid_cycle_time` - PID cycle time in milliseconds (1-1000)
+#### TEC Current Management
+- Current limit: 200-2000 mA
+- Actual current and voltage monitoring
+- Heating/cooling mode detection
 
-#### Loop Test Parameters
-- `loop_test_critical_gain` - Critical gain in mA/K (10-100000)
-- `loop_test_critical_period` - Critical period in milliseconds (100-100000)
+#### PID Tuning
+- Configurable P, I, D gains
+- Cycle time adjustment
+- Loop test parameters (critical gain and period)
+
+#### Safety Features
+- Maskable error conditions
+- Error register reset
+- Multiple error detection (sensor faults, thermal issues, etc.)
 
 #### Configuration
-- `save_to_memory()` - Save current parameters to non-volatile memory
+- Non-volatile memory storage
+- Context manager support
 
-### Low-Level Serial Commands
+#### Example Usage
 
-For advanced users who need direct serial access, the module provides low-level command functions:
+```python
+from xtalbake import MTD1020T
 
-#### Command Structure
-Commands are ASCII strings terminated with `\n`. Responses are returned as strings with brackets and whitespace stripped.
+with MTD1020T(port="/dev/ttyUSB0") as tec:
+    # System info
+    print(f"Firmware: {tec.get_firmware_version()}")
+    print(f"UUID: {tec.get_device_uuid()}")
+    
+    # Temperature control
+    tec.set_temperature_setpoint(25.0)  # 25°C
+    actual = tec.get_actual_temperature()
+    print(f"Actual temperature: {actual}°C")
+    
+    # Current control
+    tec.set_current_limit(1.5)  # 1.5A
+    current, mode = tec.get_actual_current()
+    print(f"Current: {current}A ({mode})")
+    
+    # PID configuration
+    tec.set_pid_p(1000)
+    tec.set_pid_i(50)
+    tec.set_pid_d(10)
+    
+    # Check for errors
+    error_code = tec.get_error_code()
+    if error_code:
+        errors = tec.get_error_flags()
+        print(errors.format_report(error_code))
+    
+    # Save configuration
+    tec.save_configuration()
+```
 
-**Query format:** `<command>?` (e.g., `m?` for version)  
-**Set format:** `<command><value>` (e.g., `T25000` to set 25°C)
+### Covesion OC3 Oven Controller
 
-#### System Information Commands
-- `sys_info_get_version(conn)` - Command: `m?`
-- `sys_info_get_uuid(conn)` - Command: `u?`
-- `sys_info_get_error_register(conn)` - Command: `E?`
-- `sys_info_get_error_flags(conn)` - Returns ErrorFlags enum
-- `sys_info_get_active_errors(conn)` - Returns error dictionary
-- `sys_info_reset_error_register(conn)` - Command: `c`
+The Covesion OC3 is a precision oven controller designed for crystal heating applications:
 
-#### Safety Bitmask Commands
-- `safety_bitmask_set_masked_errors(conn, *errors)` - Command: `S<bitmask>`
-- `safety_bitmask_get_masked_errors(conn)` - Command: `S?`
-- `safety_bitmask_mask_error(conn, error)` - Add error to mask
-- `safety_bitmask_unmask_error(conn, error)` - Remove error from mask
-- `safety_bitmask_unmask_all(conn)` - Command: `S0`
+#### System Information
+- Firmware version query
+- Device model identification
+- Comprehensive error reporting
 
-#### TEC Control Commands
-- `tec_control_set_current_limit(conn, limit_ma)` - Command: `L<value>`
-- `tec_control_get_current_limit(conn)` - Command: `L?`
-- `tec_control_get_actual_current(conn)` - Command: `A?`
-- `tec_control_get_actual_voltage(conn)` - Command: `U?`
+#### Temperature Control
+- Wide temperature range
+- Actual temperature monitoring
+- Temperature stability detection
 
-#### Temperature Control Commands
-- `temperature_control_set_temperature(conn, temp_millidegrees)` - Command: `T<value>`
-- `temperature_control_get_set_temperature(conn)` - Command: `T?`
-- `temperature_control_get_actual_temperature(conn)` - Command: `Te?`
-- `temperature_control_set_window(conn, window_mk)` - Command: `W<value>`
-- `temperature_control_get_window(conn)` - Command: `W?`
-- `temperature_control_set_delay(conn, delay_sec)` - Command: `d<value>`
-- `temperature_control_get_delay(conn)` - Command: `d?`
+#### Alarm Management
+- Low and high temperature alarms
+- Alarm status monitoring
+- Configurable alarm thresholds
 
-#### Loop Test Commands
-- `loop_test_set_critical_gain(conn, gain)` - Command: `G<value>`
-- `loop_test_get_critical_gain(conn)` - Command: `G?`
-- `loop_test_set_critical_period(conn, period_ms)` - Command: `O<value>`
-- `loop_test_get_critical_period(conn)` - Command: `O?`
+#### Ramping Control
+- Controlled temperature ramping
+- Configurable ramp rate in °C/min
 
-#### PID Settings Commands
-- `pid_settings_set_p_share(conn, p_value)` - Command: `P<value>`
-- `pid_settings_get_p_share(conn)` - Command: `P?`
-- `pid_settings_set_i_share(conn, i_value)` - Command: `I<value>`
-- `pid_settings_get_i_share(conn)` - Command: `I?`
-- `pid_settings_set_d_share(conn, d_value)` - Command: `D<value>`
-- `pid_settings_get_d_share(conn)` - Command: `D?`
-- `pid_settings_set_cycle_time(conn, cycle_ms)` - Command: `C<value>`
-- `pid_settings_get_cycle_time(conn)` - Command: `C?`
+#### Temperature Cycling
+- Automated temperature cycling
+- Cycle count tracking
+- Cycling status monitoring
 
-#### Configuration Commands
-- `save_configuration_to_memory(conn)` - Command: `M`
+#### Stability Monitoring
+- Temperature stability window
+- Stability status reporting
 
-#### Core Serial Functions
-- `write_command(conn, command)` - Write a command with `\n` terminator
-- `read_response(conn, timeout)` - Read response until `\n`
-- `query(conn, command, timeout)` - Send command and read response
+#### Power Monitoring
+- Power consumption tracking
+- Supply voltage monitoring
 
-### Error Flags
+#### Example Usage
 
-The `ErrorFlags` enum defines all possible error conditions:
+```python
+from xtalbake import OC3
 
-- `ENABLE_PIN_NOT_SET` - Enable pin not set to L (GND)
-- `INTERNAL_TEMP_HIGH` - Internal temperature too high
-- `THERMAL_LATCH_UP` - TEC current at limit without temperature improvement
-- `CYCLING_TIME_SMALL` - Cycling time too small
-- `NO_SENSOR` - No sensor detected
-- `NO_TEC` - No TEC detected (connection open)
-- `TEC_MISPOLED` - TEC mispoled
-- `VALUE_OUT_OF_RANGE` - Value out of range
-- `INVALID_COMMAND` - Invalid command
+with OC3(port="/dev/ttyUSB0") as oven:
+    # System info
+    print(f"Firmware: {oven.get_firmware_version()}")
+    print(f"Model: {oven.get_device_model()}")
+    
+    # Temperature control
+    oven.enable_temperature_control()
+    oven.set_temperature_setpoint(45.0)  # 45°C
+    actual = oven.get_actual_temperature()
+    print(f"Actual: {actual}°C")
+    
+    # Alarm configuration
+    oven.set_alarm_low(40.0)
+    oven.set_alarm_high(50.0)
+    if oven.get_alarm_status():
+        print("Temperature alarm active!")
+    
+    # Ramp control
+    oven.set_ramp_rate(5.0)  # 5°C per minute
+    
+    # Check stability
+    if oven.get_temperature_stability_status():
+        print("Temperature is stable")
+    
+    # Monitor power
+    power = oven.get_power()
+    voltage = oven.get_supply_voltage()
+    print(f"Power: {power}W, Supply: {voltage}V")
+    
+    # Check errors
+    error_code = oven.get_error_code()
+    if error_code:
+        errors = oven.get_error_flags()
+        print(errors.format_report(error_code))
+```
+
+## Adding New Devices
+
+To add support for a new temperature controller:
+
+1. Create a new module implementing the required protocols
+2. Register the device's USB VID:PID in `device_discovery.py`:
+
+```python
+CONTROLLER_REGISTRY: Dict[Tuple[int, int], Type] = {
+    (0x1313, 0x80C9): MTD1020T,  # MTD1020T VID:PID
+    (0x0403, 0x6001): OC3,        # OC3 VID:PID
+    (0xABCD, 0x1234): YourDevice, # Your device VID:PID
+}
+```
+
+3. Ensure your device class implements at minimum:
+   - `CoreTemperatureControl`
+   - `DeviceIdentification`
+   - `ErrorReporting`
+   - `PIDConfiguration`
+   - `PowerMonitoring`
+
+4. Define device-specific error conditions using `ErrorFlags.from_definitions()`
 
 ## Requirements
 
-* Python 3.10+
-* [PyQt6](https://pypi.org/project/PyQt6/)
-* [pyserial](https://pypi.org/project/pyserial/)
-* [matplotlib](https://pypi.org/project/matplotlib/)
+- Python 3.10+
+- [PyQt6](https://pypi.org/project/PyQt6/)
+- [pyserial](https://pypi.org/project/pyserial/)
+- [matplotlib](https://pypi.org/project/matplotlib/)
+
+## Contributing
+
+When adding support for new devices, please ensure they implement the appropriate protocols from `_tec_protocol.py` and add comprehensive documentation to this README.
