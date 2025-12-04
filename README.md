@@ -39,7 +39,7 @@ First, install the FTDI library (the exact package name varies by distribution):
 sudo dnf install libftdi
 
 # Debian/Ubuntu
-sudo apt install libftdi1
+sudo apt install libftdi1-2
 ```
 
 #### Device Not Appearing?
@@ -257,7 +257,7 @@ with OC3(port="/dev/ttyUSB1") as oven:
 To launch the graphical interface:
 
 ```bash
-xtalbake-ui
+xtalbake-gui
 ```
 
 This will open a window where you can connect to controllers, adjust temperature settings, configure PID parameters, and monitor device status.
