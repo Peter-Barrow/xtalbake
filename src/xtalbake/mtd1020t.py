@@ -144,10 +144,14 @@ def query(conn: serial.Serial, command: str, timeout: float = 2.0) -> str:
     """
     write_command(conn, command)
     response = read_response(conn, timeout)
-    if response == b'':
+    if response == b'' or response == "unknown command":
+        conn.flush()
+        conn.reset_input_buffer()
+        conn.reset_output_buffer()
         time.sleep(0.1)
         write_command(conn, command)
         response = read_response(conn, timeout)
+
     return response
 
 
@@ -433,7 +437,8 @@ def temperature_control_set_temperature(
     """
     if not 5000 <= temp_millidegrees <= 45000:
         raise ValueError('Temperature must be between 5000 and 45000 (5-45°C)')
-    write_command(conn, f'T{temp_millidegrees}')
+    msg = f'T{temp_millidegrees}'
+    write_command(conn, msg)
 
 
 def temperature_control_get_set_temperature(conn: serial.Serial) -> int:
@@ -768,6 +773,8 @@ class MTD1020T:
             write_timeout=write_timeout,
         )
 
+        self.clear_errors()
+
     def _connect(
         self,
         port: str,
@@ -816,6 +823,15 @@ class MTD1020T:
         self._close()
 
     # CoreTemperatureControl Protocol
+
+    def is_enabled(self) -> bool:
+        return True
+
+    def enable_temperature_control(self) -> bool:
+        return True
+
+    def disable_temperature_control(self) -> bool:
+        return True
 
     def get_temperature_setpoint(self) -> float:
         """Get current temperature setpoint.
@@ -928,7 +944,7 @@ class MTD1020T:
             Output current in amperes (absolute value).
         """
         current_ma, _ = tec_control_get_actual_current(self.conn)
-        return abs(current_ma) / 1000.0
+        return current_ma / 1000.0
 
     def get_supply_voltage(self) -> float:
         """Get supply voltage.

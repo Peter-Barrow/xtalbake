@@ -162,7 +162,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_connection_group(self):
         """Create connection control group with device discovery."""
-        group = QGroupBox('Connection')
+        group = QGroupBox()
         layout = QGridLayout()
 
         # Device selection row
@@ -195,7 +195,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_device_info_group(self):
         """Create device information group."""
-        group = QGroupBox('Device Information')
+        group = QGroupBox()
         layout = QGridLayout()
 
         layout.addWidget(QLabel('Firmware Version:'), 0, 0)
@@ -212,7 +212,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_core_parameters_group(self):
         """Create core temperature control parameters (always present)."""
-        group = QGroupBox('Temperature Control')
+        group = QGroupBox()
         layout = QGridLayout()
 
         row = 0
@@ -224,7 +224,7 @@ class xtalbakeGUI(QMainWindow):
         self.temp_setpoint.setValue(25.0)
         self.temp_setpoint.setSuffix(' °C')
         self.temp_setpoint.setDecimals(3)
-        self.temp_setpoint.valueChanged.connect(self.on_temp_changed)
+        # self.temp_setpoint.valueChanged.connect(self.on_temp_changed)
         layout.addWidget(self.temp_setpoint, row, 1)
         self.enable_control_button = QPushButton('Apply')
         self.enable_control_button.setMaximumWidth(80)
@@ -264,7 +264,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_pid_parameters_group(self):
         """Create PID parameter controls."""
-        group = QGroupBox('PID Parameters')
+        group = QGroupBox()
         layout = QGridLayout()
 
         row = 0
@@ -303,7 +303,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_current_limit_group(self):
         """Create current limit controls (MTD1020T specific)."""
-        group = QGroupBox('Current Control')
+        group = QGroupBox()
         layout = QGridLayout()
 
         layout.addWidget(QLabel('Current Limit:'), 0, 0)
@@ -320,7 +320,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_alarm_group(self):
         """Create alarm controls (OC3 specific)."""
-        group = QGroupBox('Temperature Alarms')
+        group = QGroupBox()
         layout = QGridLayout()
 
         layout.addWidget(QLabel('Low Alarm:'), 0, 0)
@@ -346,7 +346,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_ramp_group(self):
         """Create ramp control (OC3 specific)."""
-        group = QGroupBox('Temperature Ramping')
+        group = QGroupBox()
         layout = QGridLayout()
 
         layout.addWidget(QLabel('Ramp Rate:'), 0, 0)
@@ -363,7 +363,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_stability_group(self):
         """Create stability monitoring controls."""
-        group = QGroupBox('Temperature Stability')
+        group = QGroupBox()
         layout = QGridLayout()
 
         layout.addWidget(QLabel('Stability Window:'), 0, 0)
@@ -386,7 +386,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_buttons_group(self):
         """Create functional buttons group."""
-        group = QGroupBox('Actions')
+        group = QGroupBox()
         layout = QVBoxLayout()
 
         self.read_btn = QPushButton('Read Settings from Device')
@@ -409,7 +409,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_chart_group(self):
         """Create matplotlib chart group."""
-        group = QGroupBox('Real-Time Monitoring')
+        group = QGroupBox()
         layout = QVBoxLayout()
 
         self.canvas = MatplotlibCanvas(self, width=8, height=4, dpi=100)
@@ -474,7 +474,7 @@ class xtalbakeGUI(QMainWindow):
 
     def create_readouts_group(self):
         """Create real-time readout displays."""
-        group = QGroupBox('Current Readings')
+        group = QGroupBox()
         layout = QGridLayout()
 
         font_large = QFont()

@@ -1010,15 +1010,20 @@ source = { editable = "." }
 dependencies = [
     { name = "ipython", version = "8.37.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pyserial" },
+]
+
+[package.optional-dependencies]
+gui = [
     { name = "matplotlib" },
     { name = "pyqt6" },
-    { name = "pyserial" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "ipython", specifier = ">=8.37.0" },
-    { name = "matplotlib" },
-    { name = "pyqt6" },
+    { name = "matplotlib", marker = "extra == 'gui'" },
+    { name = "pyqt6", marker = "extra == 'gui'" },
     { name = "pyserial" },
 ]
+provides-extras = ["gui"]

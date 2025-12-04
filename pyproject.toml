@@ -24,5 +24,6 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
+xtalbake-ui = "xtalbake.ui:main"
 xtalbake-gui = "xtalbake.xtalbake_gui:main"
 xtalbake-discover = "xtalbake.device_discovery:main"
