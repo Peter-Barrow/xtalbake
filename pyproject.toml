@@ -2,7 +2,7 @@
 name = "xtalbake"
 version = "0.2.0"
 license = {file = "LICENSE"}
-description = "Add your description here"
+description = "Control library for crystal ovens"
 readme = "README.md"
 authors = [
     { email = "peter.barrow.93@gmail.com" }
