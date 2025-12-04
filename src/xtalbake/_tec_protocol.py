@@ -258,6 +258,12 @@ class CoreTemperatureControl(Protocol):
     All temperatures are in degrees Celsius.
     """
 
+    def is_enabled(self) -> bool: ...
+
+    def enable_temperature_control(self) -> bool: ...
+
+    def disable_temperature_control(self) -> bool: ...
+
     def get_temperature_setpoint(self) -> float:
         """Get current temperature setpoint.
 
