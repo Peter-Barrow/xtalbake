@@ -1,6 +1,5 @@
 import sys
 from PyQt6.QtWidgets import (
-    QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
@@ -1029,6 +1028,22 @@ class xtalbakeGUI(QMainWindow):
 
 def main():
     """Main application entry point."""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        import matplotlib
+    except ImportError as e:
+        print('Error: GUI dependencies not installed.')
+        print()
+        print('The xtalbake GUI requires PyQt6 and matplotlib.')
+        print('Install them with:')
+        print()
+        print('    pip install xtalbake[gui]')
+
+        print('    pip install "xtalbake[gui] @ git+https://github.com/Peter-Barrow/xtalbake.git"')
+        print()
+        print('Or install the missing packages directly:')
+        print('    pip install pyqt6 matplotlib')
+        raise SystemExit(1) from e
     app = QApplication(sys.argv)
 
     window = xtalbakeGUI(

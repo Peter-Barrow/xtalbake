@@ -10,9 +10,13 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "ipython>=8.37.0",
+    "pyserial",
+]
+
+[project.optional-dependencies]
+gui = [
     "matplotlib",
     "pyqt6",
-    "pyserial",
 ]
 
 [build-system]

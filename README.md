@@ -26,6 +26,13 @@ Clone and install directly from GitHub:
 pip install git+https://github.com/Peter-Barrow/xtalbake.git
 ```
 
+### GUI Installation
+
+To use the graphical interface, install with GUI dependencies:
+```bash
+pip install "xtalbake[gui] @ git+https://github.com/Peter-Barrow/xtalbake.git"
+```
+
 ### Linux
 
 On Linux systems, USB serial devices sometimes need additional setup. Here's what you might need to do:
