@@ -29,7 +29,6 @@ from ._tec_protocol import (
     DeviceIdentification,
     ErrorReporting,
     PIDConfiguration,
-    PowerMonitoring,
     ConfigurationPersistence,
     AlarmManagement,
     RampControl,
@@ -93,7 +92,7 @@ class xtalbakeGUI(QMainWindow):
         self.discovered_devices = []
 
         # Data storage for plotting (60 seconds at ~250ms update rate)
-        self.max_points = 240
+        self.max_points = 60
         self.time_data = deque(maxlen=self.max_points)
         self.temp_data = deque(maxlen=self.max_points)
         self.temp_dev_data = deque(maxlen=self.max_points)
@@ -116,7 +115,7 @@ class xtalbakeGUI(QMainWindow):
     def init_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle('xtalbake')
-        self.resize(1000, 900)
+        self.resize(900, 850)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -228,9 +227,41 @@ class xtalbakeGUI(QMainWindow):
         self.temp_setpoint.setDecimals(3)
         self.temp_setpoint.valueChanged.connect(self.on_temp_changed)
         layout.addWidget(self.temp_setpoint, row, 1)
+        self.enable_control_button = QPushButton('Apply')
+        self.enable_control_button.setMaximumWidth(80)
+        self.enable_control_button.clicked.connect(self.apply_temp_change)
+        layout.addWidget(self.enable_control_button, row, 2)
+
+        self.enable_control_button = QPushButton('Enable')
+        self.enable_control_button.setMaximumWidth(80)
+        self.enable_control_button.clicked.connect(self.enable_control)
+        layout.addWidget(self.enable_control_button, row, 3)
+
+        self.disable_control_button = QPushButton('Disable')
+        self.disable_control_button.setMaximumWidth(80)
+        self.disable_control_button.clicked.connect(self.disable_control)
+        layout.addWidget(self.disable_control_button, row, 4)
 
         group.setLayout(layout)
         return group
+
+    def enable_control(self):
+        self.controller.enable_temperature_control()
+        # self._update_button_states()
+        self.enable_control_button.setEnabled(False)
+        self.disable_control_button.setEnabled(True)
+
+    def disable_control(self):
+        self.controller.disable_temperature_control()
+        # self._update_button_states()
+        self.enable_control_button.setEnabled(True)
+        self.disable_control_button.setEnabled(False)
+
+    def _update_button_states(self):
+        """Update button states based on controller status"""
+        enabled = self.controller.is_enabled()
+        self.enable_control_button.setEnabled(not enabled)
+        self.disable_control_button.setEnabled(enabled)
 
     def create_pid_parameters_group(self):
         """Create PID parameter controls."""
@@ -647,6 +678,7 @@ class xtalbakeGUI(QMainWindow):
 
             self.status_label.setText(f'Connected to {port}')
             self.error_label.setText('')
+            self._update_button_states()
 
         except Exception as e:
             self.status_label.setText('Connection Failed')
@@ -806,74 +838,55 @@ class xtalbakeGUI(QMainWindow):
         if not self.is_connected or not self.controller:
             return
 
-        try:
-            # Read core values
-            actual_temp = self.controller.get_actual_temperature()
-            set_temp = self.controller.get_temperature_setpoint()
+        actual_temp = self.controller.get_actual_temperature()
+        set_temp = self.controller.get_temperature_setpoint()
 
-            # Update temperature displays
-            self.temp_value.setText(f'{actual_temp:.3f}')
-            temp_dev = actual_temp - set_temp
-            self.temp_dev_value.setText(f'{temp_dev:.3f}')
+        # Update temperature displays
+        self.temp_value.setText(f'{actual_temp:.3f}')
+        temp_dev = actual_temp - set_temp
+        self.temp_dev_value.setText(f'{temp_dev:.3f}')
 
-            # Update power/current display
-            if isinstance(self.controller, PowerMonitoring):
-                power = self.controller.get_output_power()
-                self.power_value.setText(f'{power:.3f}')
+        # Update power/current display
+        power = self.controller.get_output_power()
+        self.power_value.setText(f'{power:.3f}')
 
-                # Check if it's current (A) or percentage
-                if isinstance(self.controller, CurrentLimitControl):
-                    self.power_unit.setText('A')
-                else:
-                    self.power_unit.setText('%')
+        # Check if it's current (A) or percentage
+        if isinstance(self.controller, CurrentLimitControl):
+            self.power_unit.setText('A')
+        else:
+            self.power_unit.setText('%')
 
-            # Update voltage if available
-            if isinstance(self.controller, PowerMonitoring):
-                voltage = self.controller.get_supply_voltage()
-                self.voltage_value.setText(f'{voltage:.2f}')
+        voltage = self.controller.get_supply_voltage()
+        self.voltage_value.setText(f'{voltage:.2f}')
 
-            # Check errors
-            if isinstance(self.controller, ErrorReporting):
-                if self.controller.has_errors():
-                    error_code = self.controller.get_error_code()
-                    self.error_label.setText(f'Error code: {error_code}')
-                else:
-                    self.error_label.setText('')
+        if self.controller.has_errors():
+            error_code = self.controller.get_error_code()
+            self.error_label.setText(f'Error code: {error_code}')
+        else:
+            self.error_label.setText('')
 
-            # Update stability status
-            if isinstance(self.controller, TemperatureStabilityMonitoring):
-                is_stable = self.controller.get_temperature_stability_status()
-                self.stability_status.setText(
-                    '✓ Stable' if is_stable else '○ Settling'
-                )
-                self.stability_status.setStyleSheet(
-                    'color: green; font-weight: bold;'
-                    if is_stable
-                    else 'color: orange;'
-                )
+        # # Update stability status
+        is_stable = self.controller.get_temperature_stability_status()
+        self.stability_status.setText('Stable' if is_stable else 'Settling')
+        self.stability_status.setStyleSheet(
+            'color: green; font-weight: bold;'
+            if is_stable
+            else 'color: orange;'
+        )
 
-            # Update time
-            self.time_label.setText(
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            )
+        # Update time
+        self.time_label.setText(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-            # Add to plot data
-            if self.start_time:
-                elapsed = (datetime.now() - self.start_time).total_seconds()
-                self.time_data.append(elapsed)
-                self.temp_data.append(actual_temp)
-                self.temp_dev_data.append(temp_dev)
+        # Add to plot data
+        if self.start_time:
+            elapsed = (datetime.now() - self.start_time).total_seconds()
+            self.time_data.append(elapsed)
+            self.temp_data.append(actual_temp)
+            self.temp_dev_data.append(temp_dev)
 
-                if isinstance(self.controller, PowerMonitoring):
-                    power = self.controller.get_output_power()
-                    self.power_data.append(power)
-                else:
-                    self.power_data.append(0)
+            self.power_data.append(power)
 
-                self.update_plot()
-
-        except Exception as e:
-            self.error_label.setText(f'Update error: {str(e)}')
+            self.update_plot()
 
     def update_plot(self):
         """Update the real-time plot."""
@@ -943,6 +956,11 @@ class xtalbakeGUI(QMainWindow):
                 self.controller.set_temperature_setpoint(value)
             except Exception as e:
                 self.error_label.setText(f'Error: {str(e)}')
+
+    def apply_temp_change(self):
+        value = self.temp_setpoint.value()
+        if self.is_connected and self.controller:
+            self.controller.set_temperature_setpoint(value)
 
     def on_pid_changed(self, value):
         """Handle PID parameter change."""
