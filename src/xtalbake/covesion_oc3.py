@@ -1,6 +1,6 @@
 import serial
 import time
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Literal
 from dataclasses import dataclass
 from enum import Enum
 
@@ -54,9 +54,12 @@ def build_command(
     Returns:
         Formatted command string.
     """
+
+    msg = f'{msg_header}'
     if payload:
-        return f'{msg_header};' + ';'.join(payload)
-    return f'{msg_header};'
+        msg += ';' + ';'.join(payload)
+
+    return msg
 
 
 def write_command(conn: serial.Serial, command: str) -> None:
@@ -66,7 +69,7 @@ def write_command(conn: serial.Serial, command: str) -> None:
         conn: Serial connection.
         command: Command string to write.
     """
-    cmd_bytes = f'{command}\n'.encode('ascii')
+    cmd_bytes = f'!{command}\r'.encode('ascii')
     _ = conn.write(cmd_bytes)
     conn.flush()
 
@@ -84,18 +87,19 @@ def read_response(conn: serial.Serial, timeout: float = 2.0) -> List[str]:
     original_timeout = conn.timeout
     conn.timeout = timeout
 
-    response = conn.read_until(b'\n')
+    response = conn.read_until(b'\r')
     conn.flush()
 
     conn.timeout = original_timeout
 
-    return response.decode('utf-8').strip().split(';')
+    result = response.decode('utf-8').strip().split(';')
+    return result
 
 
 def query(
     conn: serial.Serial,
     command: str,
-    timeout: float = 2.0,
+    timeout: float = 0.2,
     retry: bool = False,
 ) -> List[str]:
     """Send command and read response.
@@ -109,12 +113,31 @@ def query(
     Returns:
         List of response fields.
     """
+    # conn.flush()
+    # conn.flushInput()
+    # conn.flushOutput()
     write_command(conn, command)
-    response = read_response(conn, timeout)
+    response = read_response(conn)  # , timeout)
 
-    if response == b'' and not retry:
-        time.sleep(0.1)
-        response = query(conn, command, timeout, retry=True)
+    if response == b'' and retry:
+        conn.flush()
+        conn.reset_input_buffer()
+        conn.reset_output_buffer()
+        # time.sleep(0.1)
+        response = query(conn, command, timeout, retry=False)
+
+    # for i, char in enumerate(command):
+    #     if char != 'n' or char != 'x':
+    #         break
+
+    # if char not in response[0]:
+    #     conn.flush()
+    #     conn.reset_input_buffer()
+    #     conn.reset_output_buffer()
+    #     # time.sleep(1.0)
+    #     response = query(conn, command, timeout, retry=False)
+
+    # response[0] = response[0][i:]
 
     return response
 
@@ -127,46 +150,46 @@ class AlarmAndStability:
     """
 
     alarm_low: float
-    alarm_high: float
+    larm_high: float
     stability_low: float
     stability_high: float
     set_point_minimum: float
     set_point_maximum: float
 
-    @classmethod
-    def read(cls, conn: serial.Serial) -> 'AlarmAndStability':
-        """Read alarm and stability settings from device.
+    # @classmethod
+    # def read(cls, conn: serial.Serial) -> 'AlarmAndStability':
+    #     """Read alarm and stability settings from device.
 
-        Args:
-            conn: Serial connection.
+    #     Args:
+    #         conn: Serial connection.
 
-        Returns:
-            AlarmAndStability instance.
-        """
-        command = build_command('cnn3')
-        payload = query(conn, command)
-        return cls.unpack(payload)
+    #     Returns:
+    #         AlarmAndStability instance.
+    #     """
+    #     command = build_command('cnn3')
+    #     payload = query(conn, command)
+    #     return cls.unpack(payload)
 
-    @classmethod
-    def unpack(cls, payload: List[str]) -> 'AlarmAndStability':
-        """Unpack payload into AlarmAndStability.
+    # @classmethod
+    # def unpack(cls, payload: List[str]) -> 'AlarmAndStability':
+    #     """Unpack payload into AlarmAndStability.
 
-        Args:
-            payload: Response payload from device.
+    #     Args:
+    #         payload: Response payload from device.
 
-        Returns:
-            AlarmAndStability instance.
-        """
-        # Parse response format from cnn3 command
-        # Expected format: cnn3;alarm_low;alarm_high;stability_low;stability_high;sp_min;sp_max
-        return cls(
-            alarm_low=float(payload[1]),
-            alarm_high=float(payload[2]),
-            stability_low=float(payload[3]),
-            stability_high=float(payload[4]),
-            set_point_minimum=float(payload[5]),
-            set_point_maximum=float(payload[6]),
-        )
+    #     Returns:
+    #         AlarmAndStability instance.
+    #     """
+    #     # Parse response format from cnn3 command
+    #     # Expected format: cnn3;alarm_low;alarm_high;stability_low;stability_high;sp_min;sp_max
+    #     return cls(
+    #         alarm_low=float(payload[1]),
+    #         alarm_high=float(payload[2]),
+    #         stability_low=float(payload[3]),
+    #         stability_high=float(payload[4]),
+    #         set_point_minimum=float(payload[5]),
+    #         set_point_maximum=float(payload[6]),
+    #     )
 
     def write(self, conn: serial.Serial) -> 'AlarmAndStability':
         """Write alarm and stability settings to device.
@@ -250,18 +273,25 @@ class Status:
         """
         # Parse jnn response format
         # Expected: jnn;setpoint;actual;control_status;output_power;alarm;faults;temp_ok;voltage;version;cycle_count;cycle_mode
+
+        offset = 0
+        for idx, char in enumerate(payload[0]):
+            if char == 'j':
+                offset = idx + 3
+                break
+
         return cls(
-            temperature_set_point=float(payload[1]),
-            temperature_actual=float(payload[2]),
-            control_status=ControlStatus(int(payload[3])),
-            output_power=float(payload[4]),
-            alarm_status=bool(int(payload[5])),
-            faults=int(payload[6]),
-            temperature_okay=bool(int(payload[7])),
-            supply_voltage=float(payload[8]),
-            firmware_version=payload[9],
-            cycle_count=int(payload[10]),
-            cycle_mode_status=CycleMode(int(payload[11])),
+            temperature_set_point=float(payload[0][offset:]),
+            temperature_actual=float(payload[1]),
+            control_status=ControlStatus(int(payload[2])),
+            output_power=float(payload[3]),
+            alarm_status=bool(int(payload[4])),
+            faults=int(payload[5]),
+            temperature_okay=bool(int(payload[6])),
+            supply_voltage=float(payload[7]),
+            firmware_version=payload[8],
+            cycle_count=int(payload[9]),
+            cycle_mode_status=CycleMode(int(payload[10])),
         )
 
 
@@ -275,36 +305,37 @@ class Setpoint:
     temperature: float
     ramp_rate: float
 
-    @classmethod
-    def read(cls, conn: serial.Serial) -> 'Setpoint':
-        """Read setpoint from device.
+    # @classmethod
+    # def read(cls, conn: serial.Serial) -> 'Setpoint':
+    #     """Read setpoint from device.
 
-        Args:
-            conn: Serial connection.
+    #     Args:
+    #         conn: Serial connection.
 
-        Returns:
-            Setpoint instance.
-        """
-        command = build_command('ixx1')
-        payload = query(conn, command)
-        return cls.unpack(payload)
+    #     Returns:
+    #         Setpoint instance.
+    #     """
+    #     command = build_command('ixx1')
+    #     payload = query(conn, command)
+    #     return cls.unpack(payload)
 
-    @classmethod
-    def unpack(cls, payload: List[str]) -> 'Setpoint':
-        """Unpack payload into Setpoint.
+    # @classmethod
+    # def unpack(cls, payload: List[str]) -> 'Setpoint':
+    #     """Unpack payload into Setpoint.
 
-        Args:
-            payload: Response payload from device.
+    #     Args:
+    #         payload: Response payload from device.
 
-        Returns:
-            Setpoint instance.
-        """
-        # Parse ixx1 response format
-        # Expected: ixx1;temperature;ramp_rate
-        return cls(
-            temperature=float(payload[1]),
-            ramp_rate=float(payload[2]),
-        )
+    #     Returns:
+    #         Setpoint instance.
+    #     """
+    #     # Parse ixx1 response format
+    #     # Expected: ixx1;temperature;ramp_rate
+    #     print(payload)
+    #     return cls(
+    #         temperature=float(payload[1]),
+    #         ramp_rate=float(payload[2]),
+    #     )
 
     def write(self, conn: serial.Serial) -> 'Setpoint':
         """Write setpoint to device.
@@ -317,11 +348,16 @@ class Setpoint:
         """
         payload = [
             f'{self.temperature:.1f}',
+            '100',
+            '0',
             f'{self.ramp_rate:.2f}',
+            '1',
+            '0',
         ]
-        command = build_command('gxx1', payload)
+        command = build_command('ixx1', payload)
         result_payload = query(conn, command)
-        return self.unpack(result_payload)
+        # return self.unpack(result_payload)
+        return self
 
 
 class PIDControlMode(Enum):
@@ -372,12 +408,12 @@ class PIDValues:
             output,
         ]
 
-        command = build_command('!axx', payload)
+        command = build_command('axx', payload)
         result_payload = query(conn, command)
         return PIDValues.unpack(result_payload)
 
     @classmethod
-    def read(cls, conn: serial.Serial) -> 'PIDValues':
+    def read(cls: 'PIDValues', conn: serial.Serial) -> 'PIDValues':
         """Read PID values from device.
 
         Args:
@@ -386,12 +422,12 @@ class PIDValues:
         Returns:
             PIDValues instance.
         """
-        command = build_command('!bxx')
+        command = build_command('bxx')
         payload = query(conn, command)
         return cls.unpack(payload)
 
     @classmethod
-    def unpack(cls, payload: List[str]) -> 'PIDValues':
+    def unpack(cls: 'PIDValues', payload: List[str]) -> 'PIDValues':
         """Unpack payload into PIDValues.
 
         Args:
@@ -400,8 +436,8 @@ class PIDValues:
         Returns:
             PIDValues instance.
         """
-        header = payload[0]
-        assert len(header) == 4
+        header = payload[0][1:]
+        # assert len(header) == 4
         cntrl = PIDControlMode(int(header[-1]))
         header = header[0:3]
         assert header[0] == 'b'
@@ -409,7 +445,7 @@ class PIDValues:
         term_p = float(payload[1])
         term_i = float(payload[2])
         term_d = float(payload[3])
-        derivative_filter = int(payload[4])
+        derivative_filter = float(payload[4])
         assert derivative_filter == 1
         deadband = float(payload[5])
         output = int(payload[6]) == 1
@@ -423,6 +459,9 @@ class PIDValues:
             deadband=deadband,
             output_enabled=output,
         )
+
+
+CacheItems = Literal['status', 'pid', 'alarm and stability', 'setpoint']
 
 
 class OC3:
@@ -454,6 +493,7 @@ class OC3:
         baudrate: int = 19200,
         timeout: float = 0.2,
         write_timeout: float = 0.5,
+        poling_rate: float = 0.25,  # seconds
     ):
         """Initialize OC3 controller.
 
@@ -470,15 +510,46 @@ class OC3:
             port,
             baudrate=baudrate,
             timeout=timeout,
-            write_timeout=write_timeout,
+            # write_timeout=write_timeout,
         )
+
+        self._delta_t = poling_rate
+        self._cache = {
+            'status': (time.time(), Status.read(self.conn)),
+            'pid': (time.time(), PIDValues.read(self.conn)),
+            # 'alarm and stability': AlarmAndStability,
+            # 'setpoint': Setpoint.read(self.conn),
+        }
+
+        self._cache['setpoint'] = (
+            time.time(),
+            Setpoint(self.get_temperature_setpoint(), 11),
+        )
+
+    def _get_cached_or_update(
+        self,
+        key: CacheItems,
+        update_func,
+        # update: bool = False,
+    ):
+        current_time = time.time()
+
+        # if update:
+        #     self._cache[key] = (current_time, update_func(self.conn))
+
+        (timestamp, data) = self._cache[key]
+        if (current_time - timestamp) < self._delta_t:
+            return data
+
+        self._cache[key] = (current_time, update_func(self.conn))
+        return self._cache[key][1]
 
     def _connect(
         self,
         port: str,
         baudrate: int,
         timeout: float,
-        write_timeout: float,
+        # write_timeout: float,
     ) -> None:
         """Establish serial connection to device.
 
@@ -495,12 +566,14 @@ class OC3:
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             timeout=timeout,
-            write_timeout=write_timeout,
+            # write_timeout=write_timeout,
         )
 
         # Purge buffers and reset
         conn.flush()
-        time.sleep(0.05)
+        conn.flushInput()
+        conn.flushOutput()
+        time.sleep(0.5)
         conn.reset_input_buffer()
         conn.reset_output_buffer()
 
@@ -508,6 +581,8 @@ class OC3:
 
     def _close(self) -> None:
         """Close serial connection."""
+        # self.conn.flush()
+        time.sleep(0.1)
         if self.conn is not None:
             self.conn.close()
 
@@ -524,6 +599,20 @@ class OC3:
         self._close()
 
     # CoreTemperatureControl Protocol
+    def is_enabled(self) -> bool:
+        status = self._get_cached_or_update('status', Status.read)
+        # status = Status.read(self.conn)
+        if status.control_status == ControlStatus.OFF:
+            return False
+        return True
+
+    def enable_temperature_control(self) -> bool:
+        command = build_command('mxx1', '1')
+        write_command(self.conn, command)
+
+    def disable_temperature_control(self) -> bool:
+        command = build_command('mxx0', '0')
+        write_command(self.conn, command)
 
     def get_temperature_setpoint(self) -> float:
         """Get current temperature setpoint.
@@ -531,7 +620,8 @@ class OC3:
         Returns:
             Temperature setpoint in degrees Celsius.
         """
-        status = Status.read(self.conn)
+        # status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.temperature_set_point
 
     def set_temperature_setpoint(self, temp_celsius: float) -> None:
@@ -540,8 +630,10 @@ class OC3:
         Args:
             temp_celsius: Target temperature in degrees Celsius.
         """
-        setpoint = Setpoint.read(self.conn)
-        setpoint.temperature = temp_celsius
+        # setpoint = self._get_cached_or_update('status', Status.read)
+        ramp_rate = 10  # TODO: should not be a magic number
+        setpoint = Setpoint(temp_celsius, ramp_rate)
+        # setpoint.temperature = temp_celsius
         setpoint.write(self.conn)
 
     def get_actual_temperature(self) -> float:
@@ -550,7 +642,7 @@ class OC3:
         Returns:
             Actual temperature in degrees Celsius.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.temperature_actual
 
     # DeviceIdentification Protocol
@@ -561,7 +653,7 @@ class OC3:
         Returns:
             Firmware version string.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.firmware_version
 
     def get_device_id(self) -> str:
@@ -580,7 +672,7 @@ class OC3:
         Returns:
             Integer error code representing active error flags.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.faults
 
     def has_errors(self) -> bool:
@@ -608,7 +700,9 @@ class OC3:
         Returns:
             Tuple of (P, I, D) parameters.
         """
-        pid = PIDValues.read(self.conn)
+        self.conn.flushInput()
+        self.conn.flush()
+        pid = self._get_cached_or_update('pid', PIDValues.read)
         return (pid.term_proportional, pid.term_integral, pid.term_derivative)
 
     def set_pid_parameters(self, p: float, i: float, d: float) -> None:
@@ -619,7 +713,7 @@ class OC3:
             i: Integral gain.
             d: Derivative gain.
         """
-        pid = PIDValues.read(self.conn)
+        pid = self._get_cached_or_update('pid', PIDValues.read)
         pid.term_proportional = p
         pid.term_integral = i
         pid.term_derivative = d
@@ -633,7 +727,7 @@ class OC3:
         Returns:
             Output power as percentage (0-100).
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.output_power
 
     def get_supply_voltage(self) -> float:
@@ -642,19 +736,19 @@ class OC3:
         Returns:
             Supply voltage in volts.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.supply_voltage
 
     # AlarmManagement Protocol
 
-    def get_alarm_low(self) -> float:
-        """Get low temperature alarm threshold.
+    # def get_alarm_low(self) -> float:
+    #     """Get low temperature alarm threshold.
 
-        Returns:
-            Low alarm threshold in degrees Celsius.
-        """
-        alarm = AlarmAndStability.read(self.conn)
-        return alarm.alarm_low
+    #     Returns:
+    #         Low alarm threshold in degrees Celsius.
+    #     """
+    #     alarm = AlarmAndStability.read(self.conn)
+    #     return alarm.alarm_low
 
     def set_alarm_low(self, temp_celsius: float) -> None:
         """Set low temperature alarm threshold.
@@ -666,14 +760,14 @@ class OC3:
         alarm.alarm_low = temp_celsius
         alarm.write(self.conn)
 
-    def get_alarm_high(self) -> float:
-        """Get high temperature alarm threshold.
+    # def get_alarm_high(self) -> float:
+    #     """Get high temperature alarm threshold.
 
-        Returns:
-            High alarm threshold in degrees Celsius.
-        """
-        alarm = AlarmAndStability.read(self.conn)
-        return alarm.alarm_high
+    #     Returns:
+    #         High alarm threshold in degrees Celsius.
+    #     """
+    #     alarm = AlarmAndStability.read(self.conn)
+    #     return alarm.alarm_high
 
     def set_alarm_high(self, temp_celsius: float) -> None:
         """Set high temperature alarm threshold.
@@ -691,19 +785,19 @@ class OC3:
         Returns:
             True if alarm is active.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.alarm_status
 
     # RampControl Protocol
 
-    def get_ramp_rate(self) -> float:
-        """Get temperature ramp rate.
+    # def get_ramp_rate(self) -> float:
+    #     """Get temperature ramp rate.
 
-        Returns:
-            Ramp rate in degrees Celsius per minute.
-        """
-        setpoint = Setpoint.read(self.conn)
-        return setpoint.ramp_rate
+    #     Returns:
+    #         Ramp rate in degrees Celsius per minute.
+    #     """
+    #     setpoint = Setpoint.read(self.conn)
+    #     return setpoint.ramp_rate
 
     def set_ramp_rate(self, rate_deg_per_min: float) -> None:
         """Set temperature ramp rate.
@@ -711,7 +805,7 @@ class OC3:
         Args:
             rate_deg_per_min: Ramp rate in degrees Celsius per minute.
         """
-        setpoint = Setpoint.read(self.conn)
+        setpoint = self._get_cached_or_update('setpoint', Status.read)
         setpoint.ramp_rate = rate_deg_per_min
         setpoint.write(self.conn)
 
@@ -732,7 +826,7 @@ class OC3:
         Returns:
             True if cycling is active.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.cycle_mode_status == CycleMode.RUNNING_CYCLE
 
     # TemperatureStabilityMonitoring Protocol
@@ -743,7 +837,7 @@ class OC3:
         Returns:
             True if temperature is stable within configured window.
         """
-        status = Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
         return status.temperature_okay
 
     def get_stability_window(self) -> Tuple[float, float]:
@@ -775,7 +869,8 @@ class OC3:
         Returns:
             Status dataclass with all device information.
         """
-        return Status.read(self.conn)
+        status = self._get_cached_or_update('status', Status.read)
+        return status
 
     def get_error_report(self, colorize: bool = True) -> str:
         """Get formatted error report.
