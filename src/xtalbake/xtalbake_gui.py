@@ -1,16 +1,11 @@
 import sys
+from PyQt6 import uic
 from PyQt6.QtWidgets import (
     QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
     QGridLayout,
     QLabel,
-    QPushButton,
     QDoubleSpinBox,
     QGroupBox,
-    QStatusBar,
-    QComboBox,
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont
@@ -35,6 +30,21 @@ from ._tec_protocol import (
     TemperatureStabilityMonitoring,
 )
 from .device_discovery import discover, create_controller
+
+# Handle UI file loading from package resources
+if sys.version_info >= (3, 9):
+    from importlib.resources import files
+
+    def get_ui_path(ui_filename):
+        """Get path to UI file using importlib.resources"""
+        return str(files('xtalbake.ui').joinpath(ui_filename))
+
+else:
+    import pkg_resources
+
+    def get_ui_path(ui_filename):
+        """Get path to UI file using pkg_resources"""
+        return pkg_resources.resource_filename('xtalbake.ui', ui_filename)
 
 matplotlib.use('Qt5Agg')
 
@@ -82,6 +92,11 @@ class xtalbakeGUI(QMainWindow):
                               If None, device discovery won't be available.
         """
         super().__init__()
+
+        # Load the UI file
+        ui_path = get_ui_path('xtalbake.ui')
+        uic.loadUi(ui_path, self)
+
         self.controller: Optional[CoreTemperatureControl] = None
         self.controller_factory = controller_factory
         self.discovery_function = discovery_function
@@ -101,7 +116,14 @@ class xtalbakeGUI(QMainWindow):
         # Store widget references for dynamic show/hide
         self.optional_widgets = {}
 
-        self.init_ui()
+        # Setup matplotlib canvas (must be done after UI is loaded)
+        self.setup_chart()
+
+        # Connect UI signals
+        self.connect_signals()
+
+        # Setup status bar labels (need to add them to the status bar from UI)
+        self.setup_status_bar()
 
         # Setup update timer
         self.update_timer = QTimer()
@@ -111,156 +133,103 @@ class xtalbakeGUI(QMainWindow):
         if self.discovery_function:
             self.refresh_devices()
 
-    def init_ui(self):
-        """Initialize the user interface."""
-        self.setWindowTitle('xtalbake')
-        self.resize(900, 850)
+    def setup_chart(self):
+        """Setup matplotlib canvas in the chart placeholder."""
+        # Create the matplotlib canvas
+        self.canvas = MatplotlibCanvas(self, width=8, height=4, dpi=100)
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        # Replace the placeholder widget with the canvas
+        chart_layout = self.chartCanvasPlaceholder.parent().layout()
+        chart_layout.replaceWidget(self.chartCanvasPlaceholder, self.canvas)
+        self.chartCanvasPlaceholder.deleteLater()
 
-        # Left column: Chart and core controls
-        left_column = QVBoxLayout()
-        self.chart_widget = self.create_chart_group()
-        left_column.addWidget(self.chart_widget, stretch=3)
+        # Apply styling to legend buttons
+        self.showTempCheck.setStyleSheet(f"""
+            QPushButton {{
+                border: 1px solid palette(mid);
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+            QPushButton:checked {{
+                border: 2px solid {plot_colors['temperature']};
+            }}
+        """)
 
-        # Core parameters (always shown)
-        left_column.addWidget(self.create_core_parameters_group(), stretch=1)
+        self.showDevCheck.setStyleSheet(f"""
+            QPushButton {{
+                border: 1px solid palette(mid);
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+            QPushButton:checked {{
+                border: 2px solid {plot_colors['temp_deviation']};
+            }}
+        """)
 
-        # Right column: Readouts and connection
-        right_column = QVBoxLayout()
-        right_column.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.showPowerCheck.setStyleSheet(f"""
+            QPushButton {{
+                border: 1px solid palette(mid);
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+            QPushButton:checked {{
+                border: 2px solid {plot_colors['current']};
+            }}
+        """)
 
-        right_column.addWidget(self.create_readouts_group(), stretch=2)
-        right_column.addWidget(self.create_connection_group(), stretch=1)
-        right_column.addWidget(self.create_device_info_group(), stretch=1)
-
-        # Optional parameter groups (shown based on capabilities)
-        self.optional_params_container = QWidget()
-        self.optional_params_layout = QVBoxLayout(
-            self.optional_params_container
-        )
-        self.optional_params_layout.setContentsMargins(0, 0, 0, 0)
-        right_column.addWidget(self.optional_params_container, stretch=2)
-
-        right_column.addWidget(self.create_buttons_group(), stretch=1)
-
-        main_layout.addLayout(left_column, stretch=3)
-        main_layout.addLayout(right_column, stretch=2)
-
-        # Status bar
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
+    def setup_status_bar(self):
+        """Setup status bar with labels."""
         self.status_label = QLabel('Disconnected')
         self.error_label = QLabel('')
         self.error_label.setStyleSheet('color: red; font-weight: bold;')
         self.time_label = QLabel('')
-        self.status_bar.addWidget(self.status_label)
-        self.status_bar.addWidget(self.error_label, 1)
-        self.status_bar.addPermanentWidget(self.time_label)
 
-    def create_connection_group(self):
-        """Create connection control group with device discovery."""
-        group = QGroupBox()
-        layout = QGridLayout()
+        self.statusbar.addWidget(self.status_label)
+        self.statusbar.addWidget(self.error_label, 1)
+        self.statusbar.addPermanentWidget(self.time_label)
 
-        # Device selection row
-        layout.addWidget(QLabel('Device:'), 0, 0)
+    def connect_signals(self):
+        """Connect UI signals to handlers."""
+        # Connection buttons
+        self.refreshBtn.clicked.connect(self.refresh_devices)
+        self.connectBtn.clicked.connect(self.connect_device)
+        self.disconnectBtn.clicked.connect(self.disconnect_device)
 
-        # Dropdown for device selection
-        self.device_combo = QComboBox()
-        self.device_combo.setMinimumWidth(200)
-        layout.addWidget(self.device_combo, 0, 1)
+        # Core control buttons
+        self.applyTempButton.clicked.connect(self.apply_temp_change)
+        self.enableControlButton.clicked.connect(self.enable_control)
+        self.disableControlButton.clicked.connect(self.disable_control)
 
-        # Refresh button
-        self.refresh_btn = QPushButton('Scan')
-        self.refresh_btn.setMaximumWidth(80)
-        self.refresh_btn.clicked.connect(self.refresh_devices)
-        self.refresh_btn.setToolTip('Scan for connected devices')
-        layout.addWidget(self.refresh_btn, 0, 2)
+        # Function buttons
+        self.readBtn.clicked.connect(self.read_from_device)
+        self.saveBtn.clicked.connect(self.save_to_device)
+        self.errorReportBtn.clicked.connect(self.show_error_report)
 
-        # Connection buttons row
-        self.connect_btn = QPushButton('Connect')
-        self.connect_btn.clicked.connect(self.connect_device)
-        layout.addWidget(self.connect_btn, 1, 0, 1, 2)
-
-        self.disconnect_btn = QPushButton('Disconnect')
-        self.disconnect_btn.clicked.connect(self.disconnect_device)
-        self.disconnect_btn.setEnabled(False)
-        layout.addWidget(self.disconnect_btn, 1, 2)
-
-        group.setLayout(layout)
-        return group
-
-    def create_device_info_group(self):
-        """Create device information group."""
-        group = QGroupBox()
-        layout = QGridLayout()
-
-        layout.addWidget(QLabel('Firmware Version:'), 0, 0)
-        self.firmware_label = QLabel('--')
-        layout.addWidget(self.firmware_label, 0, 1)
-
-        layout.addWidget(QLabel('Device ID:'), 1, 0)
-        self.device_id_label = QLabel('--')
-        self.device_id_label.setFont(QFont('Courier', 8))
-        layout.addWidget(self.device_id_label, 1, 1)
-
-        group.setLayout(layout)
-        return group
-
-    def create_core_parameters_group(self):
-        """Create core temperature control parameters (always present)."""
-        group = QGroupBox()
-        layout = QGridLayout()
-
-        row = 0
-
-        # Set Temperature
-        layout.addWidget(QLabel('Set Temperature:'), row, 0)
-        self.temp_setpoint = QDoubleSpinBox()
-        self.temp_setpoint.setRange(-50.0, 150.0)  # Generous range
-        self.temp_setpoint.setValue(25.0)
-        self.temp_setpoint.setSuffix(' °C')
-        self.temp_setpoint.setDecimals(3)
-        # self.temp_setpoint.valueChanged.connect(self.on_temp_changed)
-        layout.addWidget(self.temp_setpoint, row, 1)
-        self.enable_control_button = QPushButton('Apply')
-        self.enable_control_button.setMaximumWidth(80)
-        self.enable_control_button.clicked.connect(self.apply_temp_change)
-        layout.addWidget(self.enable_control_button, row, 2)
-
-        self.enable_control_button = QPushButton('Enable')
-        self.enable_control_button.setMaximumWidth(80)
-        self.enable_control_button.clicked.connect(self.enable_control)
-        layout.addWidget(self.enable_control_button, row, 3)
-
-        self.disable_control_button = QPushButton('Disable')
-        self.disable_control_button.setMaximumWidth(80)
-        self.disable_control_button.clicked.connect(self.disable_control)
-        layout.addWidget(self.disable_control_button, row, 4)
-
-        group.setLayout(layout)
-        return group
+        # Chart legend toggles
+        self.showTempCheck.clicked.connect(self.update_plot)
+        self.showDevCheck.clicked.connect(self.update_plot)
+        self.showPowerCheck.clicked.connect(self.update_plot)
 
     def enable_control(self):
-        self.controller.enable_temperature_control()
-        # self._update_button_states()
-        self.enable_control_button.setEnabled(False)
-        self.disable_control_button.setEnabled(True)
+        """Enable temperature control."""
+        if self.controller:
+            self.controller.enable_temperature_control()
+            self.enableControlButton.setEnabled(False)
+            self.disableControlButton.setEnabled(True)
 
     def disable_control(self):
-        self.controller.disable_temperature_control()
-        # self._update_button_states()
-        self.enable_control_button.setEnabled(True)
-        self.disable_control_button.setEnabled(False)
+        """Disable temperature control."""
+        if self.controller:
+            self.controller.disable_temperature_control()
+            self.enableControlButton.setEnabled(True)
+            self.disableControlButton.setEnabled(False)
 
     def _update_button_states(self):
-        """Update button states based on controller status"""
-        enabled = self.controller.is_enabled()
-        self.enable_control_button.setEnabled(not enabled)
-        self.disable_control_button.setEnabled(enabled)
+        """Update button states based on controller status."""
+        if self.controller:
+            enabled = self.controller.is_enabled()
+            self.enableControlButton.setEnabled(not enabled)
+            self.disableControlButton.setEnabled(enabled)
 
     def create_pid_parameters_group(self):
         """Create PID parameter controls."""
@@ -384,160 +353,14 @@ class xtalbakeGUI(QMainWindow):
         group.setLayout(layout)
         return group
 
-    def create_buttons_group(self):
-        """Create functional buttons group."""
-        group = QGroupBox()
-        layout = QVBoxLayout()
-
-        self.read_btn = QPushButton('Read Settings from Device')
-        self.read_btn.clicked.connect(self.read_from_device)
-        self.read_btn.setEnabled(False)
-        layout.addWidget(self.read_btn)
-
-        self.save_btn = QPushButton('Save Settings to Device')
-        self.save_btn.clicked.connect(self.save_to_device)
-        self.save_btn.setEnabled(False)
-        layout.addWidget(self.save_btn)
-
-        self.error_report_btn = QPushButton('Show Error Report')
-        self.error_report_btn.clicked.connect(self.show_error_report)
-        self.error_report_btn.setEnabled(False)
-        layout.addWidget(self.error_report_btn)
-
-        group.setLayout(layout)
-        return group
-
-    def create_chart_group(self):
-        """Create matplotlib chart group."""
-        group = QGroupBox()
-        layout = QVBoxLayout()
-
-        self.canvas = MatplotlibCanvas(self, width=8, height=4, dpi=100)
-        layout.addWidget(self.canvas)
-
-        # Legend checkboxes
-        legend_layout = QHBoxLayout()
-
-        self.show_temp_check = QPushButton('Temperature')
-        self.show_temp_check.setCheckable(True)
-        self.show_temp_check.setChecked(True)
-        self.show_temp_check.clicked.connect(self.update_plot)
-        self.show_temp_check.setStyleSheet(f"""
-            QPushButton {{
-                border: 1px solid palette(mid);
-                border-radius: 4px;
-                padding: 4px 8px;
-            }}
-            QPushButton:checked {{
-                border: 2px solid {plot_colors['temperature']};
-            }}
-        """)
-
-        self.show_dev_check = QPushButton('Deviation')
-        self.show_dev_check.setCheckable(True)
-        self.show_dev_check.setChecked(True)
-        self.show_dev_check.clicked.connect(self.update_plot)
-        self.show_dev_check.setStyleSheet(f"""
-            QPushButton {{
-                border: 1px solid palette(mid);
-                border-radius: 4px;
-                padding: 4px 8px;
-            }}
-            QPushButton:checked {{
-                border: 2px solid {plot_colors['temp_deviation']};
-            }}
-        """)
-
-        self.show_power_check = QPushButton('Power/Current')
-        self.show_power_check.setCheckable(True)
-        self.show_power_check.setChecked(True)
-        self.show_power_check.clicked.connect(self.update_plot)
-        self.show_power_check.setStyleSheet(f"""
-            QPushButton {{
-                border: 1px solid palette(mid);
-                border-radius: 4px;
-                padding: 4px 8px;
-            }}
-            QPushButton:checked {{
-                border: 2px solid {plot_colors['current']};
-            }}
-        """)
-
-        legend_layout.addWidget(self.show_temp_check)
-        legend_layout.addWidget(self.show_dev_check)
-        legend_layout.addWidget(self.show_power_check)
-        legend_layout.addStretch()
-
-        layout.addLayout(legend_layout)
-        group.setLayout(layout)
-        return group
-
-    def create_readouts_group(self):
-        """Create real-time readout displays."""
-        group = QGroupBox()
-        layout = QGridLayout()
-
-        font_large = QFont()
-        font_large.setPointSize(20)
-        font_large.setBold(True)
-
-        # Temperature
-        layout.addWidget(QLabel('Temperature'), 0, 0)
-        temp_widget = QWidget()
-        temp_layout = QHBoxLayout(temp_widget)
-        self.temp_value = QLabel('--')
-        self.temp_value.setFont(font_large)
-        self.temp_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        temp_layout.addWidget(self.temp_value)
-        temp_layout.addWidget(QLabel('°C'))
-        layout.addWidget(temp_widget, 1, 0)
-
-        # Temperature Deviation
-        layout.addWidget(QLabel('Deviation'), 2, 0)
-        dev_widget = QWidget()
-        dev_layout = QHBoxLayout(dev_widget)
-        self.temp_dev_value = QLabel('--')
-        self.temp_dev_value.setFont(font_large)
-        self.temp_dev_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        dev_layout.addWidget(self.temp_dev_value)
-        self.temp_dev_unit = QLabel('K')
-        dev_layout.addWidget(self.temp_dev_unit)
-        layout.addWidget(dev_widget, 3, 0)
-
-        # Power/Current
-        layout.addWidget(QLabel('Output Power'), 0, 1)
-        power_widget = QWidget()
-        power_layout = QHBoxLayout(power_widget)
-        self.power_value = QLabel('--')
-        self.power_value.setFont(font_large)
-        self.power_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        power_layout.addWidget(self.power_value)
-        self.power_unit = QLabel('A')
-        power_layout.addWidget(self.power_unit)
-        layout.addWidget(power_widget, 1, 1)
-
-        # Voltage (if available)
-        layout.addWidget(QLabel('Voltage'), 2, 1)
-        voltage_widget = QWidget()
-        voltage_layout = QHBoxLayout(voltage_widget)
-        self.voltage_value = QLabel('--')
-        self.voltage_value.setFont(font_large)
-        self.voltage_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        voltage_layout.addWidget(self.voltage_value)
-        voltage_layout.addWidget(QLabel('V'))
-        layout.addWidget(voltage_widget, 3, 1)
-
-        group.setLayout(layout)
-        return group
-
     def setup_optional_controls(self):
         """Setup optional controls based on controller capabilities."""
         if not self.controller:
             return
 
         # Clear existing optional widgets
-        while self.optional_params_layout.count():
-            item = self.optional_params_layout.takeAt(0)
+        while self.optionalParamsLayout.count():
+            item = self.optionalParamsLayout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         self.optional_widgets.clear()
@@ -545,48 +368,48 @@ class xtalbakeGUI(QMainWindow):
         # Add PID controls if supported
         if isinstance(self.controller, PIDConfiguration):
             pid_group = self.create_pid_parameters_group()
-            self.optional_params_layout.addWidget(pid_group)
+            self.optionalParamsLayout.addWidget(pid_group)
             self.optional_widgets['pid'] = pid_group
 
         # Add current limit if supported
         if isinstance(self.controller, CurrentLimitControl):
             current_group = self.create_current_limit_group()
-            self.optional_params_layout.addWidget(current_group)
+            self.optionalParamsLayout.addWidget(current_group)
             self.optional_widgets['current_limit'] = current_group
 
         # Add alarm controls if supported
         if isinstance(self.controller, AlarmManagement):
             alarm_group = self.create_alarm_group()
-            self.optional_params_layout.addWidget(alarm_group)
+            self.optionalParamsLayout.addWidget(alarm_group)
             self.optional_widgets['alarms'] = alarm_group
 
         # Add ramp controls if supported
         if isinstance(self.controller, RampControl):
             ramp_group = self.create_ramp_group()
-            self.optional_params_layout.addWidget(ramp_group)
+            self.optionalParamsLayout.addWidget(ramp_group)
             self.optional_widgets['ramp'] = ramp_group
 
         # Add stability monitoring if supported
         if isinstance(self.controller, TemperatureStabilityMonitoring):
             stability_group = self.create_stability_group()
-            self.optional_params_layout.addWidget(stability_group)
+            self.optionalParamsLayout.addWidget(stability_group)
             self.optional_widgets['stability'] = stability_group
 
         # Update save button text based on persistence support
         if isinstance(self.controller, ConfigurationPersistence):
-            self.save_btn.setText('Save Settings to Non-Volatile Memory')
-            self.save_btn.setEnabled(True)
+            self.saveBtn.setText('Save Settings to Non-Volatile Memory')
+            self.saveBtn.setEnabled(True)
         else:
-            self.save_btn.setText('Save Not Supported')
-            self.save_btn.setEnabled(False)
+            self.saveBtn.setText('Save Not Supported')
+            self.saveBtn.setEnabled(False)
 
     def refresh_devices(self):
         """Scan for and populate the device dropdown."""
         if not self.discovery_function:
             # If no discovery function, add a manual entry option
-            self.device_combo.clear()
-            self.device_combo.addItem('Manual: /dev/ttyUSB0', '/dev/ttyUSB0')
-            self.device_combo.setEditable(True)
+            self.deviceCombo.clear()
+            self.deviceCombo.addItem('Manual: /dev/ttyUSB0', '/dev/ttyUSB0')
+            self.deviceCombo.setEditable(True)
             self.status_label.setText(
                 'Device discovery not available (enter port manually)'
             )
@@ -594,7 +417,7 @@ class xtalbakeGUI(QMainWindow):
 
         try:
             # Clear current items
-            self.device_combo.clear()
+            self.deviceCombo.clear()
 
             # Discover devices
             self.status_label.setText('Scanning for devices...')
@@ -602,9 +425,9 @@ class xtalbakeGUI(QMainWindow):
             self.discovered_devices = devices
 
             if not devices:
-                self.device_combo.addItem('No devices found', None)
+                self.deviceCombo.addItem('No devices found', None)
                 self.status_label.setText('No devices found')
-                self.connect_btn.setEnabled(False)
+                self.connectBtn.setEnabled(False)
             else:
                 # Populate dropdown with discovered devices
                 for port, description, detected_type in devices:
@@ -617,18 +440,18 @@ class xtalbakeGUI(QMainWindow):
                         display_text = f'[Unknown] {port} - {description}'
 
                     # Store port as item data
-                    self.device_combo.addItem(display_text, port)
+                    self.deviceCombo.addItem(display_text, port)
 
                 self.status_label.setText(f'Found {len(devices)} device(s)')
-                self.connect_btn.setEnabled(True)
+                self.connectBtn.setEnabled(True)
 
         except Exception as e:
             self.error_label.setText(f'Scan error: {str(e)}')
             self.status_label.setText('Device scan failed')
             # Add manual entry fallback
-            self.device_combo.clear()
-            self.device_combo.addItem('Manual: /dev/ttyUSB0', '/dev/ttyUSB0')
-            self.device_combo.setEditable(True)
+            self.deviceCombo.clear()
+            self.deviceCombo.addItem('Manual: /dev/ttyUSB0', '/dev/ttyUSB0')
+            self.deviceCombo.setEditable(True)
 
     def connect_device(self):
         """Connect to the temperature controller."""
@@ -637,7 +460,7 @@ class xtalbakeGUI(QMainWindow):
             return
 
         # Get selected port from dropdown
-        port = self.device_combo.currentData()
+        port = self.deviceCombo.currentData()
 
         if not port:
             self.error_label.setText('Error: No valid device selected')
@@ -649,14 +472,12 @@ class xtalbakeGUI(QMainWindow):
             self.is_connected = True
 
             # Update UI
-            self.connect_btn.setEnabled(False)
-            self.disconnect_btn.setEnabled(True)
-            self.device_combo.setEnabled(False)
-            self.refresh_btn.setEnabled(
-                False
-            )  # Disable refresh while connected
-            self.read_btn.setEnabled(True)
-            self.error_report_btn.setEnabled(True)
+            self.connectBtn.setEnabled(False)
+            self.disconnectBtn.setEnabled(True)
+            self.deviceCombo.setEnabled(False)
+            self.refreshBtn.setEnabled(False)
+            self.readBtn.setEnabled(True)
+            self.errorReportBtn.setEnabled(True)
 
             # Setup optional controls based on capabilities
             self.setup_optional_controls()
@@ -665,8 +486,8 @@ class xtalbakeGUI(QMainWindow):
             if isinstance(self.controller, DeviceIdentification):
                 version = self.controller.get_firmware_version()
                 device_id = self.controller.get_device_id()
-                self.firmware_label.setText(version)
-                self.device_id_label.setText(device_id)
+                self.firmwareLabel.setText(version)
+                self.deviceIdLabel.setText(device_id)
 
             # Read current settings
             self.read_from_device()
@@ -698,16 +519,16 @@ class xtalbakeGUI(QMainWindow):
             self.is_connected = False
 
         # Reset UI
-        self.connect_btn.setEnabled(True)
-        self.disconnect_btn.setEnabled(False)
-        self.device_combo.setEnabled(True)
-        self.refresh_btn.setEnabled(True)  # Re-enable refresh
-        self.read_btn.setEnabled(False)
-        self.save_btn.setEnabled(False)
-        self.error_report_btn.setEnabled(False)
+        self.connectBtn.setEnabled(True)
+        self.disconnectBtn.setEnabled(False)
+        self.deviceCombo.setEnabled(True)
+        self.refreshBtn.setEnabled(True)
+        self.readBtn.setEnabled(False)
+        self.saveBtn.setEnabled(False)
+        self.errorReportBtn.setEnabled(False)
 
-        self.firmware_label.setText('--')
-        self.device_id_label.setText('--')
+        self.firmwareLabel.setText('--')
+        self.deviceIdLabel.setText('--')
         self.status_label.setText('Disconnected')
         self.error_label.setText('')
 
@@ -725,11 +546,11 @@ class xtalbakeGUI(QMainWindow):
 
         try:
             # Block signals to avoid triggering updates during read
-            self.temp_setpoint.blockSignals(True)
+            self.tempSetpoint.blockSignals(True)
 
             # Core temperature
             temp = self.controller.get_temperature_setpoint()
-            self.temp_setpoint.setValue(temp)
+            self.tempSetpoint.setValue(temp)
 
             # PID parameters if available
             if isinstance(self.controller, PIDConfiguration):
@@ -782,7 +603,7 @@ class xtalbakeGUI(QMainWindow):
                 self.stability_window.setValue(window)
                 self.stability_window.blockSignals(False)
 
-            self.temp_setpoint.blockSignals(False)
+            self.tempSetpoint.blockSignals(False)
             self.status_label.setText('Settings read from device')
 
         except Exception as e:
@@ -841,22 +662,22 @@ class xtalbakeGUI(QMainWindow):
         set_temp = self.controller.get_temperature_setpoint()
 
         # Update temperature displays
-        self.temp_value.setText(f'{actual_temp:.3f}')
+        self.tempValue.setText(f'{actual_temp:.3f}')
         temp_dev = actual_temp - set_temp
-        self.temp_dev_value.setText(f'{temp_dev:.3f}')
+        self.tempDevValue.setText(f'{temp_dev:.3f}')
 
         # Update power/current display
         power = self.controller.get_output_power()
-        self.power_value.setText(f'{power:.3f}')
+        self.powerValue.setText(f'{power:.3f}')
 
         # Check if it's current (A) or percentage
         if isinstance(self.controller, CurrentLimitControl):
-            self.power_unit.setText('A')
+            self.powerUnit.setText('A')
         else:
-            self.power_unit.setText('%')
+            self.powerUnit.setText('%')
 
         voltage = self.controller.get_supply_voltage()
-        self.voltage_value.setText(f'{voltage:.2f}')
+        self.voltageValue.setText(f'{voltage:.2f}')
 
         if self.controller.has_errors():
             error_code = self.controller.get_error_code()
@@ -864,14 +685,15 @@ class xtalbakeGUI(QMainWindow):
         else:
             self.error_label.setText('')
 
-        # # Update stability status
-        is_stable = self.controller.get_temperature_stability_status()
-        self.stability_status.setText('Stable' if is_stable else 'Settling')
-        self.stability_status.setStyleSheet(
-            'color: green; font-weight: bold;'
-            if is_stable
-            else 'color: orange;'
-        )
+        # Update stability status if widget exists
+        if hasattr(self, 'stability_status'):
+            is_stable = self.controller.get_temperature_stability_status()
+            self.stability_status.setText('Stable' if is_stable else 'Settling')
+            self.stability_status.setStyleSheet(
+                'color: green; font-weight: bold;'
+                if is_stable
+                else 'color: orange;'
+            )
 
         # Update time
         self.time_label.setText(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
@@ -882,7 +704,6 @@ class xtalbakeGUI(QMainWindow):
             self.time_data.append(elapsed)
             self.temp_data.append(actual_temp)
             self.temp_dev_data.append(temp_dev)
-
             self.power_data.append(power)
 
             self.update_plot()
@@ -906,7 +727,7 @@ class xtalbakeGUI(QMainWindow):
         time_array = np.array(self.time_data)
 
         # Plot temperature
-        if self.show_temp_check.isChecked() and len(self.temp_data) > 0:
+        if self.showTempCheck.isChecked() and len(self.temp_data) > 0:
             ax1.plot(
                 time_array,
                 np.array(self.temp_data),
@@ -916,7 +737,7 @@ class xtalbakeGUI(QMainWindow):
             )
 
         # Plot deviation
-        if self.show_dev_check.isChecked() and len(self.temp_dev_data) > 0:
+        if self.showDevCheck.isChecked() and len(self.temp_dev_data) > 0:
             ax1.plot(
                 time_array,
                 np.array(self.temp_dev_data),
@@ -926,7 +747,7 @@ class xtalbakeGUI(QMainWindow):
             )
 
         # Plot power/current
-        if self.show_power_check.isChecked() and len(self.power_data) > 0:
+        if self.showPowerCheck.isChecked() and len(self.power_data) > 0:
             ax2.plot(
                 time_array,
                 np.array(self.power_data),
@@ -939,7 +760,7 @@ class xtalbakeGUI(QMainWindow):
         ax1.set_ylabel('Temperature [°C] / Deviation [K]')
 
         # Label second axis appropriately
-        if isinstance(self.controller, CurrentLimitControl):
+        if self.controller and isinstance(self.controller, CurrentLimitControl):
             ax2.set_ylabel('Current [A]')
         else:
             ax2.set_ylabel('Power [%]')
@@ -948,16 +769,9 @@ class xtalbakeGUI(QMainWindow):
         self.canvas.draw()
 
     # Parameter change handlers
-    def on_temp_changed(self, value):
-        """Handle temperature setpoint change."""
-        if self.is_connected and self.controller:
-            try:
-                self.controller.set_temperature_setpoint(value)
-            except Exception as e:
-                self.error_label.setText(f'Error: {str(e)}')
-
     def apply_temp_change(self):
-        value = self.temp_setpoint.value()
+        """Apply temperature setpoint change."""
+        value = self.tempSetpoint.value()
         if self.is_connected and self.controller:
             self.controller.set_temperature_setpoint(value)
 
@@ -1038,12 +852,14 @@ def main():
         print('Install them with:')
         print()
         print('    pip install xtalbake[gui]')
-
-        print('    pip install "xtalbake[gui] @ git+https://github.com/Peter-Barrow/xtalbake.git"')
+        print(
+            '    pip install "xtalbake[gui] @ git+https://github.com/Peter-Barrow/xtalbake.git"'
+        )
         print()
         print('Or install the missing packages directly:')
         print('    pip install pyqt6 matplotlib')
         raise SystemExit(1) from e
+
     app = QApplication(sys.argv)
 
     window = xtalbakeGUI(
