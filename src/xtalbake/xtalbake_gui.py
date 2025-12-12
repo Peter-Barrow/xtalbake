@@ -3,9 +3,9 @@ from PyQt6 import uic
 from PyQt6.QtWidgets import (
     QMainWindow,
     QGridLayout,
+    QWidget,
     QLabel,
     QDoubleSpinBox,
-    QGroupBox,
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont
@@ -45,6 +45,7 @@ else:
     def get_ui_path(ui_filename):
         """Get path to UI file using pkg_resources"""
         return pkg_resources.resource_filename('xtalbake.ui', ui_filename)
+
 
 matplotlib.use('Qt5Agg')
 
@@ -112,9 +113,6 @@ class xtalbakeGUI(QMainWindow):
         self.temp_dev_data = deque(maxlen=self.max_points)
         self.power_data = deque(maxlen=self.max_points)  # Current or power %
         self.start_time = None
-
-        # Store widget references for dynamic show/hide
-        self.optional_widgets = {}
 
         # Setup matplotlib canvas (must be done after UI is loaded)
         self.setup_chart()
@@ -231,9 +229,9 @@ class xtalbakeGUI(QMainWindow):
             self.enableControlButton.setEnabled(not enabled)
             self.disableControlButton.setEnabled(enabled)
 
-    def create_pid_parameters_group(self):
-        """Create PID parameter controls."""
-        group = QGroupBox()
+    def create_pid_tab_content(self):
+        """Create PID parameter controls for tab."""
+        widget = QWidget()
         layout = QGridLayout()
 
         row = 0
@@ -267,72 +265,78 @@ class xtalbakeGUI(QMainWindow):
         self.d_share.valueChanged.connect(self.on_pid_changed)
         layout.addWidget(self.d_share, row, 1)
 
-        group.setLayout(layout)
-        return group
+        widget.setLayout(layout)
+        return widget
 
-    def create_current_limit_group(self):
-        """Create current limit controls (MTD1020T specific)."""
-        group = QGroupBox()
+    def create_limits_alarms_tab_content(self):
+        """Create limits and alarms controls for tab."""
+        widget = QWidget()
         layout = QGridLayout()
 
-        layout.addWidget(QLabel('Current Limit:'), 0, 0)
-        self.current_limit = QDoubleSpinBox()
-        self.current_limit.setRange(0.2, 2.0)
-        self.current_limit.setValue(2.0)
-        self.current_limit.setSuffix(' A')
-        self.current_limit.setDecimals(3)
-        self.current_limit.valueChanged.connect(self.on_current_limit_changed)
-        layout.addWidget(self.current_limit, 0, 1)
+        row = 0
 
-        group.setLayout(layout)
-        return group
+        # Current limit (MTD1020T)
+        if isinstance(self.controller, CurrentLimitControl):
+            layout.addWidget(QLabel('Current Limit:'), row, 0)
+            self.current_limit = QDoubleSpinBox()
+            self.current_limit.setRange(0.2, 2.0)
+            self.current_limit.setValue(2.0)
+            self.current_limit.setSuffix(' A')
+            self.current_limit.setDecimals(3)
+            self.current_limit.valueChanged.connect(
+                self.on_current_limit_changed
+            )
+            layout.addWidget(self.current_limit, row, 1)
+            row += 1
 
-    def create_alarm_group(self):
-        """Create alarm controls (OC3 specific)."""
-        group = QGroupBox()
+        # Alarms (OC3)
+        if isinstance(self.controller, AlarmManagement):
+            layout.addWidget(QLabel('Low Alarm:'), row, 0)
+            self.alarm_low = QDoubleSpinBox()
+            self.alarm_low.setRange(-50.0, 150.0)
+            self.alarm_low.setValue(20.0)
+            self.alarm_low.setSuffix(' °C')
+            self.alarm_low.setDecimals(1)
+            self.alarm_low.valueChanged.connect(self.on_alarm_low_changed)
+            layout.addWidget(self.alarm_low, row, 1)
+            row += 1
+
+            layout.addWidget(QLabel('High Alarm:'), row, 0)
+            self.alarm_high = QDoubleSpinBox()
+            self.alarm_high.setRange(-50.0, 150.0)
+            self.alarm_high.setValue(40.0)
+            self.alarm_high.setSuffix(' °C')
+            self.alarm_high.setDecimals(1)
+            self.alarm_high.valueChanged.connect(self.on_alarm_high_changed)
+            layout.addWidget(self.alarm_high, row, 1)
+
+        widget.setLayout(layout)
+        return widget
+
+    def create_temperature_control_tab_content(self):
+        """Create temperature control features (ramp, cycling) for tab."""
+        widget = QWidget()
         layout = QGridLayout()
 
-        layout.addWidget(QLabel('Low Alarm:'), 0, 0)
-        self.alarm_low = QDoubleSpinBox()
-        self.alarm_low.setRange(-50.0, 150.0)
-        self.alarm_low.setValue(20.0)
-        self.alarm_low.setSuffix(' °C')
-        self.alarm_low.setDecimals(1)
-        self.alarm_low.valueChanged.connect(self.on_alarm_low_changed)
-        layout.addWidget(self.alarm_low, 0, 1)
+        row = 0
 
-        layout.addWidget(QLabel('High Alarm:'), 1, 0)
-        self.alarm_high = QDoubleSpinBox()
-        self.alarm_high.setRange(-50.0, 150.0)
-        self.alarm_high.setValue(40.0)
-        self.alarm_high.setSuffix(' °C')
-        self.alarm_high.setDecimals(1)
-        self.alarm_high.valueChanged.connect(self.on_alarm_high_changed)
-        layout.addWidget(self.alarm_high, 1, 1)
+        # Ramp control (OC3)
+        if isinstance(self.controller, RampControl):
+            layout.addWidget(QLabel('Ramp Rate:'), row, 0)
+            self.ramp_rate = QDoubleSpinBox()
+            self.ramp_rate.setRange(0.0, 100.0)
+            self.ramp_rate.setValue(0.0)
+            self.ramp_rate.setSuffix(' °C/min')
+            self.ramp_rate.setDecimals(2)
+            self.ramp_rate.valueChanged.connect(self.on_ramp_rate_changed)
+            layout.addWidget(self.ramp_rate, row, 1)
 
-        group.setLayout(layout)
-        return group
+        widget.setLayout(layout)
+        return widget
 
-    def create_ramp_group(self):
-        """Create ramp control (OC3 specific)."""
-        group = QGroupBox()
-        layout = QGridLayout()
-
-        layout.addWidget(QLabel('Ramp Rate:'), 0, 0)
-        self.ramp_rate = QDoubleSpinBox()
-        self.ramp_rate.setRange(0.0, 100.0)
-        self.ramp_rate.setValue(0.0)
-        self.ramp_rate.setSuffix(' °C/min')
-        self.ramp_rate.setDecimals(2)
-        self.ramp_rate.valueChanged.connect(self.on_ramp_rate_changed)
-        layout.addWidget(self.ramp_rate, 0, 1)
-
-        group.setLayout(layout)
-        return group
-
-    def create_stability_group(self):
-        """Create stability monitoring controls."""
-        group = QGroupBox()
+    def create_stability_tab_content(self):
+        """Create stability monitoring controls for tab."""
+        widget = QWidget()
         layout = QGridLayout()
 
         layout.addWidget(QLabel('Stability Window:'), 0, 0)
@@ -350,50 +354,38 @@ class xtalbakeGUI(QMainWindow):
         layout.addWidget(QLabel('Status:'), 1, 0)
         layout.addWidget(self.stability_status, 1, 1)
 
-        group.setLayout(layout)
-        return group
+        widget.setLayout(layout)
+        return widget
 
     def setup_optional_controls(self):
-        """Setup optional controls based on controller capabilities."""
+        """Setup feature tabs based on controller capabilities."""
         if not self.controller:
             return
 
-        # Clear existing optional widgets
-        while self.optionalParamsLayout.count():
-            item = self.optionalParamsLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self.optional_widgets.clear()
+        # Clear any existing tabs
+        self.featureTabWidget.clear()
 
-        # Add PID controls if supported
+        # Tab 1: PID Tuning (most common, almost all devices)
         if isinstance(self.controller, PIDConfiguration):
-            pid_group = self.create_pid_parameters_group()
-            self.optionalParamsLayout.addWidget(pid_group)
-            self.optional_widgets['pid'] = pid_group
+            pid_widget = self.create_pid_tab_content()
+            self.featureTabWidget.addTab(pid_widget, 'PID Tuning')
 
-        # Add current limit if supported
-        if isinstance(self.controller, CurrentLimitControl):
-            current_group = self.create_current_limit_group()
-            self.optionalParamsLayout.addWidget(current_group)
-            self.optional_widgets['current_limit'] = current_group
+        # Tab 2: Limits & Alarms (device-specific)
+        if isinstance(self.controller, (CurrentLimitControl, AlarmManagement)):
+            limits_widget = self.create_limits_alarms_tab_content()
+            self.featureTabWidget.addTab(limits_widget, 'Limits & Alarms')
 
-        # Add alarm controls if supported
-        if isinstance(self.controller, AlarmManagement):
-            alarm_group = self.create_alarm_group()
-            self.optionalParamsLayout.addWidget(alarm_group)
-            self.optional_widgets['alarms'] = alarm_group
-
-        # Add ramp controls if supported
+        # Tab 3: Temperature Control (ramp, cycling - OC3 specific)
         if isinstance(self.controller, RampControl):
-            ramp_group = self.create_ramp_group()
-            self.optionalParamsLayout.addWidget(ramp_group)
-            self.optional_widgets['ramp'] = ramp_group
+            temp_control_widget = self.create_temperature_control_tab_content()
+            self.featureTabWidget.addTab(
+                temp_control_widget, 'Temperature Control'
+            )
 
-        # Add stability monitoring if supported
+        # Tab 4: Stability & Monitoring
         if isinstance(self.controller, TemperatureStabilityMonitoring):
-            stability_group = self.create_stability_group()
-            self.optionalParamsLayout.addWidget(stability_group)
-            self.optional_widgets['stability'] = stability_group
+            stability_widget = self.create_stability_tab_content()
+            self.featureTabWidget.addTab(stability_widget, 'Stability')
 
         # Update save button text based on persistence support
         if isinstance(self.controller, ConfigurationPersistence):
@@ -479,6 +471,10 @@ class xtalbakeGUI(QMainWindow):
             self.readBtn.setEnabled(True)
             self.errorReportBtn.setEnabled(True)
 
+            # Enable feature tab widget and core controls
+            self.featureTabWidget.setEnabled(True)
+            self.coreParametersGroupBox.setEnabled(True)
+
             # Setup optional controls based on capabilities
             self.setup_optional_controls()
 
@@ -526,6 +522,10 @@ class xtalbakeGUI(QMainWindow):
         self.readBtn.setEnabled(False)
         self.saveBtn.setEnabled(False)
         self.errorReportBtn.setEnabled(False)
+
+        # Disable feature tab widget and core controls
+        self.featureTabWidget.setEnabled(False)
+        self.coreParametersGroupBox.setEnabled(False)
 
         self.firmwareLabel.setText('--')
         self.deviceIdLabel.setText('--')

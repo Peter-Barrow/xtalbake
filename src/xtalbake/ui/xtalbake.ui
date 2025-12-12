@@ -14,9 +14,9 @@
    <string>xtalbake</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QHBoxLayout" name="mainHorizontalLayout">
-    <item>
-     <layout class="QVBoxLayout" name="leftColumnLayout" stretch="3,1">
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="1" column="0">
+     <layout class="QVBoxLayout" name="leftColumnLayout" stretch="3,2">
       <item>
        <widget class="QGroupBox" name="chartGroupBox">
         <property name="title">
@@ -77,7 +77,7 @@
            <item>
             <spacer name="legendSpacer">
              <property name="orientation">
-              <enum>Qt::Horizontal</enum>
+              <enum>Qt::Orientation::Horizontal</enum>
              </property>
              <property name="sizeHint" stdset="0">
               <size>
@@ -93,88 +93,30 @@
        </widget>
       </item>
       <item>
-       <widget class="QGroupBox" name="coreParametersGroupBox">
-        <property name="title">
-         <string/>
+       <widget class="QTabWidget" name="featureTabWidget">
+        <property name="enabled">
+         <bool>false</bool>
         </property>
-        <layout class="QGridLayout" name="coreParametersLayout">
-         <item row="0" column="0">
-          <widget class="QLabel" name="setTempLabel">
-           <property name="text">
-            <string>Set Temperature:</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="QDoubleSpinBox" name="tempSetpoint">
-           <property name="suffix">
-            <string> °C</string>
-           </property>
-           <property name="decimals">
-            <number>3</number>
-           </property>
-           <property name="minimum">
-            <double>-50.000000000000000</double>
-           </property>
-           <property name="maximum">
-            <double>150.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>25.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="2">
-          <widget class="QPushButton" name="applyTempButton">
-           <property name="maximumSize">
-            <size>
-             <width>80</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Apply</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="3">
-          <widget class="QPushButton" name="enableControlButton">
-           <property name="maximumSize">
-            <size>
-             <width>80</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Enable</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="4">
-          <widget class="QPushButton" name="disableControlButton">
-           <property name="maximumSize">
-            <size>
-             <width>80</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Disable</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
+        <property name="currentIndex">
+         <number>-1</number>
+        </property>
        </widget>
       </item>
      </layout>
     </item>
-    <item>
-     <layout class="QVBoxLayout" name="rightColumnLayout" stretch="2,1,1,2,1">
+    <item row="1" column="1">
+     <layout class="QVBoxLayout" name="rightColumnLayout" stretch="3,1,1">
       <property name="spacing">
        <number>6</number>
       </property>
       <item>
        <widget class="QGroupBox" name="readoutsGroupBox">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>1</verstretch>
+         </sizepolicy>
+        </property>
         <property name="title">
          <string/>
         </property>
@@ -213,7 +155,7 @@
                <string>--</string>
               </property>
               <property name="alignment">
-               <set>Qt::AlignCenter</set>
+               <set>Qt::AlignmentFlag::AlignCenter</set>
               </property>
              </widget>
             </item>
@@ -261,7 +203,7 @@
                <string>--</string>
               </property>
               <property name="alignment">
-               <set>Qt::AlignCenter</set>
+               <set>Qt::AlignmentFlag::AlignCenter</set>
               </property>
              </widget>
             </item>
@@ -309,7 +251,7 @@
                <string>--</string>
               </property>
               <property name="alignment">
-               <set>Qt::AlignCenter</set>
+               <set>Qt::AlignmentFlag::AlignCenter</set>
               </property>
              </widget>
             </item>
@@ -357,7 +299,7 @@
                <string>--</string>
               </property>
               <property name="alignment">
-               <set>Qt::AlignCenter</set>
+               <set>Qt::AlignmentFlag::AlignCenter</set>
               </property>
              </widget>
             </item>
@@ -375,30 +317,48 @@
        </widget>
       </item>
       <item>
-       <widget class="QGroupBox" name="connectionGroupBox">
+       <widget class="QGroupBox" name="coreParametersGroupBox">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>1</verstretch>
+         </sizepolicy>
+        </property>
         <property name="title">
          <string/>
         </property>
-        <layout class="QGridLayout" name="connectionLayout">
-         <item row="0" column="0">
-          <widget class="QLabel" name="deviceLabel">
-           <property name="text">
-            <string>Device:</string>
+        <layout class="QGridLayout" name="coreParametersLayout">
+         <item row="0" column="1">
+          <widget class="QDoubleSpinBox" name="tempSetpoint">
+           <property name="suffix">
+            <string> °C</string>
+           </property>
+           <property name="decimals">
+            <number>3</number>
+           </property>
+           <property name="minimum">
+            <double>-50.000000000000000</double>
+           </property>
+           <property name="maximum">
+            <double>150.000000000000000</double>
+           </property>
+           <property name="value">
+            <double>25.000000000000000</double>
            </property>
           </widget>
          </item>
-         <item row="0" column="1">
-          <widget class="QComboBox" name="deviceCombo">
-           <property name="minimumSize">
-            <size>
-             <width>200</width>
-             <height>0</height>
-            </size>
+         <item row="0" column="0">
+          <widget class="QLabel" name="setTempLabel">
+           <property name="text">
+            <string>Set Temperature:</string>
            </property>
           </widget>
          </item>
          <item row="0" column="2">
-          <widget class="QPushButton" name="refreshBtn">
+          <widget class="QPushButton" name="applyTempButton">
            <property name="maximumSize">
             <size>
              <width>80</width>
@@ -406,102 +366,54 @@
             </size>
            </property>
            <property name="text">
-            <string>Scan</string>
-           </property>
-           <property name="toolTip">
-            <string>Scan for connected devices</string>
+            <string>Apply</string>
            </property>
           </widget>
          </item>
-         <item row="1" column="0" colspan="2">
-          <widget class="QPushButton" name="connectBtn">
-           <property name="text">
-            <string>Connect</string>
+         <item row="1" column="0" colspan="3">
+          <layout class="QHBoxLayout" name="enableDisableLayout" stretch="0,0">
+           <property name="sizeConstraint">
+            <enum>QLayout::SizeConstraint::SetMaximumSize</enum>
            </property>
-          </widget>
+           <item>
+            <widget class="QPushButton" name="enableControlButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="text">
+              <string>Enable</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="disableControlButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="text">
+              <string>Disable</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </item>
-         <item row="1" column="2">
-          <widget class="QPushButton" name="disconnectBtn">
-           <property name="enabled">
-            <bool>false</bool>
-           </property>
-           <property name="text">
-            <string>Disconnect</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item>
-       <widget class="QGroupBox" name="deviceInfoGroupBox">
-        <property name="title">
-         <string/>
-        </property>
-        <layout class="QGridLayout" name="deviceInfoLayout">
-         <item row="0" column="0">
-          <widget class="QLabel" name="firmwareVersionLabel">
-           <property name="text">
-            <string>Firmware Version:</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="QLabel" name="firmwareLabel">
-           <property name="text">
-            <string>--</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="deviceIdLabel_2">
-           <property name="text">
-            <string>Device ID:</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="1">
-          <widget class="QLabel" name="deviceIdLabel">
-           <property name="font">
-            <font>
-             <family>Courier</family>
-             <pointsize>8</pointsize>
-            </font>
-           </property>
-           <property name="text">
-            <string>--</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item>
-       <widget class="QWidget" name="optionalParamsContainer" native="true">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <layout class="QVBoxLayout" name="optionalParamsLayout">
-         <property name="leftMargin">
-          <number>0</number>
-         </property>
-         <property name="topMargin">
-          <number>0</number>
-         </property>
-         <property name="rightMargin">
-          <number>0</number>
-         </property>
-         <property name="bottomMargin">
-          <number>0</number>
-         </property>
         </layout>
        </widget>
       </item>
       <item>
        <widget class="QGroupBox" name="buttonsGroupBox">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>1</verstretch>
+         </sizepolicy>
+        </property>
         <property name="title">
          <string/>
         </property>
@@ -541,18 +453,127 @@
       </item>
      </layout>
     </item>
+    <item row="0" column="0" colspan="2">
+     <widget class="QGroupBox" name="deviceInfoGroupBox">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="title">
+       <string/>
+      </property>
+      <layout class="QGridLayout" name="deviceInfoLayout">
+       <item row="0" column="0">
+        <widget class="QGroupBox" name="connectionGroupBox">
+         <property name="title">
+          <string/>
+         </property>
+         <layout class="QGridLayout" name="connectionLayout">
+          <item row="0" column="3">
+           <widget class="QPushButton" name="connectBtn">
+            <property name="text">
+             <string>Connect</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="refreshBtn">
+            <property name="maximumSize">
+             <size>
+              <width>80</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="toolTip">
+             <string>Scan for connected devices</string>
+            </property>
+            <property name="text">
+             <string>Scan</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="deviceLabel">
+            <property name="text">
+             <string>Device:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="deviceCombo">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>200</width>
+              <height>0</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="4">
+           <widget class="QPushButton" name="disconnectBtn">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="text">
+             <string>Disconnect</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <layout class="QFormLayout" name="formLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="firmwareVersionLabel">
+           <property name="text">
+            <string>Firmware Version:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="deviceIdLabel_2">
+           <property name="text">
+            <string>Device ID:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLabel" name="firmwareLabel">
+           <property name="text">
+            <string>--</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLabel" name="deviceIdLabel">
+           <property name="font">
+            <font>
+             <family>Courier</family>
+             <pointsize>8</pointsize>
+            </font>
+           </property>
+           <property name="text">
+            <string>--</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </item>
    </layout>
   </widget>
-  <widget class="QStatusBar" name="statusbar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>830</y>
-     <width>900</width>
-     <height>20</height>
-    </rect>
-   </property>
-  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
  <connections/>
