@@ -347,7 +347,7 @@ class Setpoint:
             Updated Setpoint read back from device.
         """
         payload = [
-            f'{self.temperature:.1f}',
+            f'{self.temperature:.2f}',
             '100',
             '0',
             f'{self.ramp_rate:.2f}',

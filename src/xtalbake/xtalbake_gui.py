@@ -1,35 +1,36 @@
 import sys
-from PyQt6 import uic
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QGridLayout,
-    QWidget,
-    QLabel,
-    QDoubleSpinBox,
-)
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QFont
-import matplotlib
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
-import numpy as np
 from collections import deque
 from datetime import datetime
 from typing import Optional
 
+import matplotlib
+import numpy as np
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+from PyQt6 import uic
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QDoubleSpinBox,
+    QGridLayout,
+    QLabel,
+    QMainWindow,
+    QWidget,
+)
+
 # Import protocols
 from ._tec_protocol import (
+    AlarmManagement,
+    ConfigurationPersistence,
     CoreTemperatureControl,
+    CurrentLimitControl,
     DeviceIdentification,
     ErrorReporting,
     PIDConfiguration,
-    ConfigurationPersistence,
-    AlarmManagement,
     RampControl,
-    CurrentLimitControl,
     TemperatureStabilityMonitoring,
 )
-from .device_discovery import discover, create_controller
+from .device_discovery import create_controller, discover
 
 # Handle UI file loading from package resources
 if sys.version_info >= (3, 9):
@@ -843,8 +844,8 @@ class xtalbakeGUI(QMainWindow):
 def main():
     """Main application entry point."""
     try:
-        from PyQt6.QtWidgets import QApplication
         import matplotlib
+        from PyQt6.QtWidgets import QApplication
     except ImportError as e:
         print('Error: GUI dependencies not installed.')
         print()
